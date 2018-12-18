@@ -15,6 +15,11 @@ class ShadertoyShader(models.Model):
         verbose_name=_("JSON data"),
     )
 
+    date_published = models.DateTimeField(
+        verbose_name=_("Published"),
+        default=None, null=True, blank=True,
+    )
+
     username = models.CharField(
         verbose_name=_("User"),
         max_length=64,
@@ -39,13 +44,23 @@ class ShadertoyShader(models.Model):
         default=None, null=True, blank=True,
     )
 
+    num_views = models.IntegerField(
+        verbose_name=_("#Views"),
+        default=None, null=True, blank=True,
+    )
+
     num_likes = models.IntegerField(
         verbose_name=_("#Likes"),
         default=None, null=True, blank=True,
     )
 
-    num_views = models.IntegerField(
-        verbose_name=_("#Views"),
+    num_views_per_day = models.FloatField(
+        verbose_name=_("#Views/d"),
+        default=None, null=True, blank=True,
+    )
+
+    num_likes_per_day = models.FloatField(
+        verbose_name=_("#Likes/d"),
         default=None, null=True, blank=True,
     )
 

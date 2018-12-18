@@ -1,5 +1,8 @@
 import json
+import datetime
+
 from django.db import transaction
+from django.utils import timezone
 
 from . import ShadertoyApi
 from shaders.models import ShadertoyShader
@@ -45,13 +48,19 @@ def get_model_fields_from_json(data):
         if "code" in render_pass
     ]
 
+    date = datetime.datetime.fromtimestamp(int(info["date"]))
+    num_days = (datetime.datetime.now() - date).days
+
     return {
         "username": info["username"],
         "name": info["name"],
         "description": info["description"],
         "tags": ", ".join(info["tags"]),
-        "num_likes": info["likes"],
+        "date_published": timezone.make_aware(date),
         "num_views": info["viewed"],
+        "num_likes": info["likes"],
+        "num_views_per_day": info["viewed"] / max(1, num_days),
+        "num_likes_per_day": info["likes"] / max(1, num_days),
         "num_passes": len(sources),
         "num_characters": sum(len(s) for s in sources),
     }

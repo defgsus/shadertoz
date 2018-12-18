@@ -20,9 +20,11 @@
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="TemplatesService">
+    <option name="TEMPLATE_CONFIGURATION" value="Django" />
     <option name="TEMPLATE_FOLDERS">
       <list>
         <option value="$MODULE_DIR$/env/lib/python3.5/site-packages/django/forms/templates" />
+        <option value="$MODULE_DIR$/shaders/templates" />
       </list>
     </option>
   </component>
