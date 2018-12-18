@@ -13,6 +13,8 @@ class ShadertoyShaderAdmin(admin.ModelAdmin):
         "num_views", "num_likes",
         "num_views_per_day_decorator", "num_likes_per_day_decorator",
         "num_passes", "num_characters",
+        "num_lines_blank", "num_lines_code", "num_lines_comment",
+        "num_chars_code", "num_chars_comment",
         "username", "name", "description", "tags",
         #"shader_json",
     )

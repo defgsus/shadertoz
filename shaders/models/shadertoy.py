@@ -74,5 +74,30 @@ class ShadertoyShader(models.Model):
         default=None, null=True, blank=True,
     )
 
+    num_lines_blank = models.IntegerField(
+        verbose_name=_("#Blank lines"),
+        default=None, null=True, blank=True,
+    )
+
+    num_lines_code = models.IntegerField(
+        verbose_name=_("#Code lines"),
+        default=None, null=True, blank=True,
+    )
+
+    num_lines_comment = models.IntegerField(
+        verbose_name=_("#Comment lines"),
+        default=None, null=True, blank=True,
+    )
+
+    num_chars_code = models.IntegerField(
+        verbose_name=_("#Code chars"),
+        default=None, null=True, blank=True,
+    )
+
+    num_chars_comment = models.IntegerField(
+        verbose_name=_("#Comment chars"),
+        default=None, null=True, blank=True,
+    )
+
     def url(self):
         return "https://www.shadertoy.com/view/%s" % self.shader_id

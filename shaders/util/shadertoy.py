@@ -5,6 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import ShadertoyApi
+from . import glsl
 from shaders.models import ShadertoyShader
 
 
@@ -51,7 +52,7 @@ def get_model_fields_from_json(data):
     date = datetime.datetime.fromtimestamp(int(info["date"]))
     num_days = (datetime.datetime.now() - date).days
 
-    return {
+    dic = {
         "username": info["username"],
         "name": info["name"],
         "description": info["description"],
@@ -64,6 +65,10 @@ def get_model_fields_from_json(data):
         "num_passes": len(sources),
         "num_characters": sum(len(s) for s in sources),
     }
+    dic.update(
+        glsl.get_glsl_statistics("\n".join(sources))
+    )
+    return dic
 
 
 def update_shader_model_from_json(shader):
