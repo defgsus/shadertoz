@@ -74,6 +74,11 @@ class ShadertoyShader(models.Model):
         default=None, null=True, blank=True,
     )
 
+    num_lines = models.IntegerField(
+        verbose_name=_("#Lines"),
+        default=None, null=True, blank=True,
+    )
+
     num_lines_blank = models.IntegerField(
         verbose_name=_("#Blank lines"),
         default=None, null=True, blank=True,

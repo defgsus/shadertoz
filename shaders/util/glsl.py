@@ -43,6 +43,7 @@ def count_code(source):
     :return: dict
     """
     result = {
+        "num_lines": 0,
         "num_lines_code": 0,
         "num_lines_comment": 0,
         "num_lines_blank": 0,
@@ -90,6 +91,7 @@ def count_code(source):
                     result["num_lines_comment"] += 1
             else:
                 result["num_lines_blank"] += 1
+            result["num_lines"] += 1
 
             in_open_comment = False
             line_had_characters = False
