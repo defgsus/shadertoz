@@ -27,16 +27,7 @@ multiline
 """
 
 
-def get_glsl_statistics(source):
-    """
-    :param source: str
-    :return: dict
-    """
-    dic = count_code(source)
-    return dic
-
-
-def count_code(source):
+def get_line_statistics(source):
     """
     Counts code, blank lines and comments
     :param source: str
