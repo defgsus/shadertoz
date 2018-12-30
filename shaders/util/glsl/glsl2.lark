@@ -1,0 +1,92 @@
+// https://www2.cs.arizona.edu/~debray/Teaching/CSc453/DOCS/cminusminusspec.html
+
+%ignore WHITESPACE
+
+start: prog
+
+prog: ( decl ";" | func )*
+
+decl: type var_decl ( "," var_decl )*
+ 	| 	[ "extern" ] type id "(" param_types ")" ( "," id "(" param_types ")" )*
+
+var_decl 	: 	id [ "[" int_const "]" ]
+
+type 	: "void" | "char" | "short" | "int" | "long" | "float"
+    | "vec2" | "vec3" | "vec4"
+    | "ivec2" | "ivec3" | "ivec4"
+    | "uvec2" | "uvec3" | "uvec4"
+    | "dvec2" | "dvec3" | "dvec4"
+    | "double" | "signed" | "unsigned"
+
+param_types 	: param_type ("," param_type)*
+param_type: ["in"|"out"|"inout"] type id
+
+func 	: 	type id "(" [param_types] ")" "{" ( type var_decl ( "," var_decl )* ";" )* ( stmt )* "}"
+
+stmt 	: 	if_stmt
+ 	| 	"while" "(" expr ")" stmt
+ 	| 	"for" "(" [ assg ] ";" [ expr ] ";" [ assg ] ")" stmt
+ 	| 	"return" [ expr ] ";"
+ 	| 	assg ";"
+ 	| 	func_call ";"
+ 	| 	"{" ( stmt )* "}"
+ 	| 	";"
+
+if_stmt: "if" "(" cond ")" stmt ["else" stmt]
+cond: expr
+
+assg 	: type id ["=" expr] ("," id ["=" expr])*
+        | nested_id assg_op expr ("," nested_id assg_op expr)*
+
+nested_id: id | id ["[" expr "]"] ["." nested_id]
+
+expr 	: 	"-" expr
+ 	| 	"!" expr
+ 	|   expr "." nested_id
+ 	| 	expr binop expr
+ 	| 	expr relop expr
+ 	| 	expr logical_op expr
+ 	| 	"(" expr ")"
+ 	| 	const
+ 	|   nested_id
+    |   func_call
+    |   cond "?" expr ":" expr
+
+// 	| 	id [ "(" [expr ("," expr)* ] ")" | "[" expr "]" ] ["." id]
+
+func_call: id "(" [expr ("," expr)*] ")"
+
+binop 	: 	"+"
+ 	|	"-"
+ 	|	"*"
+ 	|	"/"
+
+relop 	: 	"=="
+ 	|	"!="
+ 	|	"<="
+ 	|	"<"
+ 	|	">="
+ 	|	">"
+
+logical_op 	: 	"&&"
+ 	|	"||"
+
+!assg_op	: "=" | "*=" | "/=" | "%=" | "+=" | "-=" | "<<="
+			| ">>=" | "&=" | "^=" | "|="
+
+const:  int_const | float_const | char_const | string_const
+
+int_const:          ["0x"] /-?[0-9]+/
+
+float_const:        /[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?/
+                    | /[-+]?[0-9]+\.[0-9]*([eE][-+]?[0-9]+)?/
+
+char_const:         "\"" /./ "\""
+
+string_const:             /".*"/
+
+enumeration_const:  id
+
+id:                 /[a-zA-Z_][a-zA-Z0-9_]*/
+
+WHITESPACE: /\s/
