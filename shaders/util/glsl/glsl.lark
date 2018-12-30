@@ -1,4 +1,4 @@
-// https://www2.cs.arizona.edu/~debray/Teaching/CSc453/DOCS/cminusminusspec.html
+// adapted from https://www2.cs.arizona.edu/~debray/Teaching/CSc453/DOCS/cminusminusspec.html
 
 %ignore WHITESPACE
 
@@ -7,7 +7,8 @@ start: prog
 prog: ( decl ";" | func )*
 
 decl: type var_decl ( "," var_decl )*
- 	| 	[ "extern" ] type id "(" param_types ")" ( "," id "(" param_types ")" )*
+ 	| type id "(" param_types ")" ( "," id "(" param_types ")" )*
+ 	| "const" assg
 
 var_decl 	: 	id [ "[" int_const "]" ]
 
@@ -27,6 +28,7 @@ stmt 	: 	if_stmt
  	| 	"while" "(" expr ")" stmt
  	| 	"for" "(" [ assg ] ";" [ expr ] ";" [ assg ] ")" stmt
  	| 	"return" [ expr ] ";"
+ 	|   "break" ";"
  	| 	assg ";"
  	| 	func_call ";"
  	| 	"{" ( stmt )* "}"
@@ -37,31 +39,37 @@ cond: expr
 
 assg 	: type id ["=" expr] ("," id ["=" expr])*
         | nested_id assg_op expr ("," nested_id assg_op expr)*
+        | prefix_op nested_id
 
 nested_id: id | id ["[" expr "]"] ["." nested_id]
 
 expr 	: 	"-" expr
  	| 	"!" expr
  	|   expr "." nested_id
- 	| 	expr binop expr
- 	| 	expr relop expr
+ 	| 	expr binary_op expr
+ 	| 	expr relation_op expr
  	| 	expr logical_op expr
  	| 	"(" expr ")"
  	| 	const
  	|   nested_id
     |   func_call
     |   cond "?" expr ":" expr
+ 	|   prefix_op nested_id
 
 // 	| 	id [ "(" [expr ("," expr)* ] ")" | "[" expr "]" ] ["." id]
 
 func_call: id "(" [expr ("," expr)*] ")"
 
-binop 	: 	"+"
+binary_op 	: 	"+"
  	|	"-"
  	|	"*"
  	|	"/"
+ 	|   "%"
+ 	|   "&"
+ 	|   "|"
+ 	|   "^"
 
-relop 	: 	"=="
+relation_op 	: 	"=="
  	|	"!="
  	|	"<="
  	|	"<"
@@ -71,7 +79,9 @@ relop 	: 	"=="
 logical_op 	: 	"&&"
  	|	"||"
 
-!assg_op	: "=" | "*=" | "/=" | "%=" | "+=" | "-=" | "<<="
+prefix_op: "++" | "--"
+
+assg_op	: "=" | "*=" | "/=" | "%=" | "+=" | "-=" | "<<="
 			| ">>=" | "&=" | "^=" | "|="
 
 const:  int_const | float_const | char_const | string_const
