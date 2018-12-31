@@ -7,6 +7,12 @@ with open(os.path.join(
 )) as fp:
     GRAMMAR = fp.read()
 
+PARSER = lark.Lark(
+    GRAMMAR,
+    propagate_positions=True,
+    keep_all_tokens=True,
+)
+
 
 def _find(
         matches, data, level=0, _cur_level=0,
@@ -62,10 +68,9 @@ def token(token_or_tree):
 
 
 class GlslTransformer(lark.Transformer):
-
-    def __init__(self):
-        from .CodeStats import CodeStats
-        self._stats = CodeStats()
+    """
+    Simplifies certain constructs
+    """
 
     def param_type(self, matches):
         return {
@@ -74,39 +79,44 @@ class GlslTransformer(lark.Transformer):
             "name": token(matches[-1]),
         }
 
-    def func(self, matches):
+
+class GlslVisitor(lark.Visitor):
+    """
+    Collects occurences of things in CodeStats
+    """
+    def __init__(self):
+        from .CodeStats import CodeStats
+        self._stats = CodeStats()
+
+    def func(self, node):
+        param_types = breadth_first(node.children, "param_types")
         self._stats.add_function(
-            type=token(breadth_first(matches, "type", 1)),
-            name=token(breadth_first(matches, "id", 1)),
+            type=token(breadth_first(node.children, "type", 1)),
+            name=token(breadth_first(node.children, "id", 1)),
             params=list(filter(
                 lambda c: isinstance(c, dict),
-                breadth_first(matches, "param_types").children,
+                param_types.children if param_types else [],
             )),
         )
 
-    def func_call(self, matches):
+    def func_call(self, node):
         self._stats.add_call(
-            token(breadth_first(matches, "id", 1))
+            token(breadth_first(node.children, "id", 1))
         )
 
-    def nested_id(self, matches):
+    def nested_id(self, node):
         self._stats.add_id(
-            "".join(filter(bool, (token(t) for t in matches)))
+            "".join(filter(bool, (token(t) for t in node.children)))
         )
+
 
 def get_glsl_parsed(source):
     from shaders.util.glsl.line_stats import remove_comments
     source = remove_comments(source)
     source = preprocess(source)
 
-    parser = lark.Lark(
-        GRAMMAR,
-        propagate_positions=True,
-        keep_all_tokens=True,
-    )
-
     try:
-        ast = parser.parse(source)
+        ast = PARSER.parse(source)
     except (
             lark.UnexpectedCharacters,
             lark.UnexpectedInput,
@@ -124,17 +134,19 @@ def get_glsl_parsed(source):
                     if y == line-1:
                         print(" " * (col+4) + "^")
             raise e
-            return None
+            # return None
         except ValueError:
             raise e
 
-    transform = GlslTransformer()
-    new_tree = transform.transform(ast)
+    new_tree = GlslTransformer().transform(ast)
+
+    visitor = GlslVisitor()
+    visitor.visit(new_tree)
 
     print("-"*30)
     #dump_ast(ast)
     #print(transform._stats._functions)
-    transform._stats.dump()
+    visitor._stats.dump()
     print("-"*30)
     #dump_ast(new_tree)
     return ast

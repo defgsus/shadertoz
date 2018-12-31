@@ -8,7 +8,8 @@ prog: ( decl ";" | func )*
 
 decl: type var_decl ( "," var_decl )*
  	| type id "(" param_types ")" ( "," id "(" param_types ")" )*
- 	| "const" assg
+ 	| struct_stmt
+ 	| assg
 
 var_decl 	: 	id [ "[" int_const "]" ]
 
@@ -18,6 +19,7 @@ type 	: "void" | "char" | "short" | "int" | "long" | "float"
     | "uvec2" | "uvec3" | "uvec4"
     | "dvec2" | "dvec3" | "dvec4"
     | "double" | "signed" | "unsigned"
+    | id
 
 param_types 	: param_type ("," param_type)*
 param_type: ["in"|"out"|"inout"] type id
@@ -32,14 +34,22 @@ stmt 	: 	if_stmt
  	| 	assg ";"
  	| 	func_call ";"
  	| 	"{" ( stmt )* "}"
+ 	|   struct_stmt
  	| 	";"
 
 if_stmt: "if" "(" cond ")" stmt ["else" stmt]
 cond: expr
 
-assg 	: type id ["=" expr] ("," id ["=" expr])*
+struct_stmt: "struct" id "{" struct_mem_def "}"
+struct_mem_def: type id ";" (type id ";")*
+
+assg 	: [decl_spec] type id ["=" expr] ("," id ["=" expr])*
         | nested_id assg_op expr ("," nested_id assg_op expr)*
-        | prefix_op nested_id
+        | pfix_op nested_id
+        | nested_id pfix_op
+        | [decl_spec] [type] id "=" (id "=")* expr
+
+decl_spec: "const"
 
 nested_id: id | id ["[" expr "]"] ["." nested_id]
 
@@ -54,7 +64,8 @@ expr 	: 	"-" expr
  	|   nested_id
     |   func_call
     |   cond "?" expr ":" expr
- 	|   prefix_op nested_id
+ 	|   pfix_op nested_id
+ 	|   nested_id pfix_op
 
 // 	| 	id [ "(" [expr ("," expr)* ] ")" | "[" expr "]" ] ["." id]
 
@@ -79,7 +90,7 @@ relation_op 	: 	"=="
 logical_op 	: 	"&&"
  	|	"||"
 
-prefix_op: "++" | "--"
+pfix_op: "++" | "--"
 
 assg_op	: "=" | "*=" | "/=" | "%=" | "+=" | "-=" | "<<="
 			| ">>=" | "&=" | "^=" | "|="
