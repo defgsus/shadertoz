@@ -54,6 +54,7 @@ decl_spec: "const"
 nested_id: id | id ["[" expr "]"] ["." nested_id]
 
 expr 	: 	"-" expr
+    |   "+" expr
  	| 	"!" expr
  	|   expr "." nested_id
  	| 	expr binary_op expr
@@ -66,8 +67,6 @@ expr 	: 	"-" expr
     |   cond "?" expr ":" expr
  	|   pfix_op nested_id
  	|   nested_id pfix_op
-
-// 	| 	id [ "(" [expr ("," expr)* ] ")" | "[" expr "]" ] ["." id]
 
 func_call: id "(" [expr ("," expr)*] ")"
 

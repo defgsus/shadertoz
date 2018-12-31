@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from . import ShadertoyApi
 from . import glsl
-from shaders.models import ShadertoyShader
+from shaders.models import ShadertoyShader, CodeStatsModel
 
 
 def download_all_shaders(api=None):
@@ -66,13 +66,26 @@ def get_model_fields_from_json(data):
         "num_characters": sum(len(s) for s in sources),
     }
     dic.update(
-        glsl.get_glsl_statistics("\n".join(sources))
+        glsl.get_line_statistics("\n".join(sources))
     )
     return dic
 
 
-def update_shader_model_from_json(shader):
+def update_shader_model_from_json(
+        shader,
+        update_code_stats=False,
+):
     fields = get_model_fields_from_json(shader.shader_json)
     for key in fields:
         setattr(shader, key, fields[key])
 
+    if update_code_stats and not shader.code_stats:
+        stats_dict = glsl.parse_shader_from_shadertoy_json(shader.shader_json)
+        stats = stats_dict["sum"]
+
+        if not shader.code_stats:
+            stats_model = CodeStatsModel.objects.create(stats_json=stats.to_json())
+            shader.code_stats = stats_model
+        else:
+            shader.code_stats.stats = stats
+            shader.save()

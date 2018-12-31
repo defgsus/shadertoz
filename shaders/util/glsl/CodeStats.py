@@ -25,6 +25,15 @@ class CodeStats:
         obj.update(kwargs)
         self._functions.append(obj)
 
+    def add_stats(self, stats):
+        for name in stats._calls:
+            self._calls[name] = self._calls.get(name, 0) + stats._calls[name]
+        for name in stats._ids:
+            self._ids[name] = self._ids.get(name, 0) + stats._ids[name]
+        for func in stats._functions:
+            if func not in self._functions:
+                self._functions.append(func)
+
     def dump(self, fp=None):
         if fp is None:
             fp = sys.stdout

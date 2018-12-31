@@ -105,14 +105,6 @@ def get_line_statistics(source):
     return result
 
 
-def remove_comments(source):
-
-    source = RE_OPEN_COMMENTS.sub("\n", source)
-    source = RE_CLOSED_COMMENTS.sub(" ", source)
-
-    return source
-
-
 if __name__ == "__main__":
 
     print(get_line_statistics(test_code))

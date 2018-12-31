@@ -104,5 +104,12 @@ class ShadertoyShader(models.Model):
         default=None, null=True, blank=True,
     )
 
+    code_stats = models.ForeignKey(
+        verbose_name=_("Code statistics"),
+        to="CodeStatsModel",
+        default=None, null=True, blank=True,
+        on_delete=models.PROTECT,
+    )
+
     def url(self):
         return "https://www.shadertoy.com/view/%s" % self.shader_id

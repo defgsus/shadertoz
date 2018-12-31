@@ -1,5 +1,10 @@
 import os
+import re
+
 import lark
+
+from .CodeStats import CodeStats
+
 
 with open(os.path.join(
     os.path.dirname(__file__),
@@ -85,7 +90,6 @@ class GlslVisitor(lark.Visitor):
     Collects occurences of things in CodeStats
     """
     def __init__(self):
-        from .CodeStats import CodeStats
         self._stats = CodeStats()
 
     def func(self, node):
@@ -110,8 +114,7 @@ class GlslVisitor(lark.Visitor):
         )
 
 
-def get_glsl_parsed(source):
-    from shaders.util.glsl.line_stats import remove_comments
+def get_code_stats(source):
     source = remove_comments(source)
     source = preprocess(source)
 
@@ -143,13 +146,13 @@ def get_glsl_parsed(source):
     visitor = GlslVisitor()
     visitor.visit(new_tree)
 
-    print("-"*30)
+    #print("-"*30)
     #dump_ast(ast)
     #print(transform._stats._functions)
-    visitor._stats.dump()
-    print("-"*30)
+    #visitor._stats.dump()
+    #print("-"*30)
     #dump_ast(new_tree)
-    return ast
+    return visitor._stats
 
 
 def dump_ast(ast):
@@ -160,13 +163,23 @@ def parse_shader_from_shadertoy_json(data):
     shader = data["Shader"]
     passes = shader["renderpass"]
 
+    sum_stats = CodeStats()
     sources_dict = dict()
     for render_pass in passes:
         source = render_pass["code"]
         if source:
-            parsed = get_glsl_parsed(source)
-            if parsed:
-                sources_dict[render_pass["name"]] = parsed
+            print("parsing %s %s:%s" % (
+                shader["info"]["name"],
+                shader["info"]["id"],
+                render_pass["name"],
+            ))
+            stats = get_code_stats(source)
+            if stats:
+                sources_dict[render_pass["name"]] = stats
+                sum_stats.add_stats(stats)
+
+    sources_dict["sum"] = sum_stats
+
     return sources_dict
 
 
@@ -178,9 +191,25 @@ def preprocess(source):
     return "\n".join(lines)
 
 
+RE_CLOSED_COMMENTS = re.compile(r'/\*+[\S\s]+?\*+/')
+RE_OPEN_COMMENTS = re.compile(r'//.*')
+
+def remove_comments(source):
+
+    def _remove_multiline(m):
+        text = m.group()
+        num_newlines = text.count("\n")
+        return "\n" * num_newlines or " "
+
+    source = RE_CLOSED_COMMENTS.sub(_remove_multiline, source)
+    source = RE_OPEN_COMMENTS.sub(" ", source)
+
+    return source
+
+
 if __name__ == "__main__":
 
-    ast = get_glsl_parsed("""
+    get_code_stats("""
     void funktion(in vec3 a) {
         if (x < .2) 
             a.x = b;
@@ -193,4 +222,3 @@ if __name__ == "__main__":
        return i * i; 
     }*/
     """)
-    #dump_ast(ast)
