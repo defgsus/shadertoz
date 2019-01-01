@@ -32,16 +32,17 @@ stmt 	: 	if_stmt
  	| 	"return" [ expr ] ";"
  	|   "break" ";"
  	| 	assg ";"
+ 	|   assg ("," assg)+ ";"
  	| 	func_call ";"
  	| 	"{" ( stmt )* "}"
  	|   struct_stmt
  	| 	";"
 
-if_stmt: "if" "(" cond ")" stmt ["else" stmt]
+if_stmt: "if" "(" cond ["," cond] ")" stmt ["else" stmt]
 cond: expr
 
 struct_stmt: "struct" id "{" struct_mem_def "}"
-struct_mem_def: type id ";" (type id ";")*
+struct_mem_def: type id ["[" int_const "]"] ";" (type id ["[" int_const "]"] ";")*
 
 assg 	: [decl_spec] type id ["=" expr] ("," id ["=" expr])*
         | nested_id assg_op expr ("," nested_id assg_op expr)*
@@ -67,6 +68,7 @@ expr 	: 	"-" expr
     |   cond "?" expr ":" expr
  	|   pfix_op nested_id
  	|   nested_id pfix_op
+ 	|   assg
 
 func_call: id "(" [expr ("," expr)*] ")"
 

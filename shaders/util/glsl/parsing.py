@@ -1,9 +1,10 @@
 import os
-import re
 
 import lark
 
 from .CodeStats import CodeStats
+from .preprocessor import preprocess
+from .comments import remove_comments
 
 
 with open(os.path.join(
@@ -181,30 +182,6 @@ def parse_shader_from_shadertoy_json(data):
     sources_dict["sum"] = sum_stats
 
     return sources_dict
-
-
-def preprocess(source):
-    lines = source.split("\n")
-    for i, l in enumerate(lines):
-        if l.strip().startswith("#"):
-            lines[i] = ""
-    return "\n".join(lines)
-
-
-RE_CLOSED_COMMENTS = re.compile(r'/\*+[\S\s]+?\*+/')
-RE_OPEN_COMMENTS = re.compile(r'//.*')
-
-def remove_comments(source):
-
-    def _remove_multiline(m):
-        text = m.group()
-        num_newlines = text.count("\n")
-        return "\n" * num_newlines or " "
-
-    source = RE_CLOSED_COMMENTS.sub(_remove_multiline, source)
-    source = RE_OPEN_COMMENTS.sub(" ", source)
-
-    return source
 
 
 if __name__ == "__main__":
