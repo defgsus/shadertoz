@@ -15,8 +15,10 @@ with open(os.path.join(
 
 PARSER = lark.Lark(
     GRAMMAR,
-    propagate_positions=True,
-    keep_all_tokens=True,
+    #parser="lalr",
+    parser="earley",
+    #propagate_positions=True,
+    #keep_all_tokens=True,
 )
 
 
@@ -169,11 +171,17 @@ def parse_shader_from_shadertoy_json(data):
     for render_pass in passes:
         source = render_pass["code"]
         if source:
-            print("parsing %s %s:%s" % (
+            name = "\"%s\" %s:%s %skchars" % (
                 shader["info"]["name"],
                 shader["info"]["id"],
                 render_pass["name"],
-            ))
+                len(source) // 1000,
+            )
+            if len(source) > 2000:
+                print("SKIPPING %s" % name)
+                return None
+
+            print("parsing %s" % name)
             stats = get_code_stats(source)
             if stats:
                 sources_dict[render_pass["name"]] = stats

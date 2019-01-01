@@ -11,7 +11,7 @@ def remove_comments(source):
         num_newlines = text.count("\n")
         return "\n" * num_newlines or " " * len(text)
 
-    source = RE_CLOSED_COMMENTS.sub(_remove_multiline, source)
     source = RE_OPEN_COMMENTS.sub(" ", source)
+    source = RE_CLOSED_COMMENTS.sub(_remove_multiline, source)
 
     return source

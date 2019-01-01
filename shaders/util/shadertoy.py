@@ -81,11 +81,12 @@ def update_shader_model_from_json(
 
     if update_code_stats and not shader.code_stats:
         stats_dict = glsl.parse_shader_from_shadertoy_json(shader.shader_json)
-        stats = stats_dict["sum"]
+        if stats_dict:
+            stats = stats_dict["sum"]
 
-        if not shader.code_stats:
-            stats_model = CodeStatsModel.objects.create(stats_json=stats.to_json())
-            shader.code_stats = stats_model
-        else:
-            shader.code_stats.stats = stats
-            shader.save()
+            if not shader.code_stats:
+                stats_model = CodeStatsModel.objects.create(stats_json=stats.to_json())
+                shader.code_stats = stats_model
+            else:
+                shader.code_stats.stats = stats
+                shader.save()
