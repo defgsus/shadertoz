@@ -47,7 +47,7 @@ assg 	: [decl_spec] type id ["=" expr] ("," id ["=" expr])*
         | nested_id assg_op expr ("," nested_id assg_op expr)*
         | pfix_op nested_id
         | nested_id pfix_op
-        | [decl_spec] [type] id "=" (id "=")* expr
+        | [decl_spec] [type] id "=" (nested_id assg_op)* expr
 
 decl_spec: "const"
 
@@ -96,7 +96,8 @@ assg_op	: "=" | "*=" | "/=" | "%=" | "+=" | "-=" | "<<="
 
 const:  int_const | float_const | char_const | string_const
 
-int_const:          ["0x"] /-?[0-9]+/
+int_const:          /-?[0-9]+[uU]?/
+                |   /0[xX][0-9a-fA-F]+[uU]?/
 
 float_const:        /[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?/
                     | /[-+]?[0-9]+\.[0-9]*([eE][-+]?[0-9]+)?/

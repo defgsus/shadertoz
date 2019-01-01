@@ -11,27 +11,40 @@ def parse_line(line):
 
 
 class TestParser(TestCase):
+    
+    def parse_line(self, line):
+        self.assertIsNotNone(parse_line(line))
 
     def test_assignment_float(self):
-        self.assertIsNotNone(parse_line("float a = 1.0"))
-        self.assertIsNotNone(parse_line("float a = .0"))
-        self.assertIsNotNone(parse_line("float a = 1."))
-        self.assertIsNotNone(parse_line("float a = 1.0e10"))
-        self.assertIsNotNone(parse_line("float a = 1.e10"))
-        self.assertIsNotNone(parse_line("float a = 1.0e+10"))
-        self.assertIsNotNone(parse_line("float a = 1.0e-10"))
-        self.assertIsNotNone(parse_line("float a = .5e-10"))
+        self.parse_line("float a = 1.0")
+        self.parse_line("float a = .0")
+        self.parse_line("float a = 1.")
+        self.parse_line("float a = 1.0e10")
+        self.parse_line("float a = 1.e10")
+        self.parse_line("float a = 1.0e+10")
+        self.parse_line("float a = 1.0e-10")
+        self.parse_line("float a = .5e-10")
+
+    def test_assignment_int(self):
+        self.parse_line("int a = 23")
+        self.parse_line("int a = 23u")
+        self.parse_line("int a = 23U")
+        self.parse_line("int a = 1e10")
+        self.parse_line("int a = 1e-10")
+        self.parse_line("int a = 0x0fff")
+        self.parse_line("int a = 0x0fffU")
 
     def test_assignment_op(self):
-        self.assertIsNotNone(parse_line("a = 1"))
-        self.assertIsNotNone(parse_line("a *= 2"))
-        self.assertIsNotNone(parse_line("product *= sound"))
+        self.parse_line("a = 1")
+        self.parse_line("a *= 2")
+        self.parse_line("a *= b")
+        self.parse_line("a = b.x *= c.y")
 
     def test_declaration(self):
-        self.assertIsNotNone(parse_line("int a = 1, b = 2, c=d"))
-        self.assertIsNotNone(parse_line("int a"))
-        self.assertIsNotNone(parse_line("int a, b = 2"))
-        self.assertIsNotNone(parse_line("int a = 1, b, c=3, d, e=f, g"))
+        self.parse_line("int a = 1, b = 2, c=d")
+        self.parse_line("int a")
+        self.parse_line("int a, b = 2")
+        self.parse_line("int a = 1, b, c=3, d, e=f, g")
 
     def test_remove_open_comments(self):
         self._test_comments("""
