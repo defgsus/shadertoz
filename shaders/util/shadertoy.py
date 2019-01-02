@@ -79,7 +79,9 @@ def update_shader_model_from_json(
     for key in fields:
         setattr(shader, key, fields[key])
 
-    if update_code_stats and not shader.code_stats:
+    SKIP = ("MddGD7", "MsBfRm")
+
+    if update_code_stats and not shader.code_stats and shader.shader_id not in SKIP:
         stats_dict = glsl.parse_shader_from_shadertoy_json(shader.shader_json)
         if stats_dict:
             stats = stats_dict["sum"]

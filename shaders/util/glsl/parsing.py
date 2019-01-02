@@ -179,7 +179,7 @@ def parse_shader_from_shadertoy_json(data):
             )
             if len(source) > 2000:
                 print("SKIPPING %s" % name)
-                return None
+                continue
 
             print("parsing %s" % name)
             stats = get_code_stats(source)
@@ -187,8 +187,10 @@ def parse_shader_from_shadertoy_json(data):
                 sources_dict[render_pass["name"]] = stats
                 sum_stats.add_stats(stats)
 
-    sources_dict["sum"] = sum_stats
+    if not sources_dict:
+        return
 
+    sources_dict["sum"] = sum_stats
     return sources_dict
 
 

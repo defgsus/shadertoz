@@ -33,6 +33,7 @@ stmt 	: 	if_stmt
  	| 	"return" [ expr ] ";"
  	|   "break" ";"
  	|   "continue" ";"
+ 	|   "discard" ";"
  	| 	assg ";"
  	|   assg ("," assg)+ ";"
  	|   type nested_id ";"
