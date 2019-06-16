@@ -15,8 +15,8 @@ with open(os.path.join(
 
 PARSER = lark.Lark(
     GRAMMAR,
-    #parser="lalr",
-    parser="earley",
+    parser="lalr",
+    #parser="earley",
     #propagate_positions=True,
     #keep_all_tokens=True,
 )
