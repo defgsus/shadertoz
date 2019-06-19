@@ -1,89 +1,85 @@
-import re
 import json
-import requests
+from multiprocessing import Pool
+from threading import Lock
+
+from .ShadertoyCrawlerApi import ShadertoyCrawlerApi
 
 
 class ShadertoyCrawler:
 
-    HOST_SHADERTOY = "www.shadertoy.com"
-    URL_SHADERTOY = "https://" + HOST_SHADERTOY + "/"
-    URL_SHADERTOY_RESULTS = URL_SHADERTOY + "results"
-    URL_SHADERTOY_VIEW_SHADER = URL_SHADERTOY + "view/"
-    URL_SHADERTOY_SHADER = URL_SHADERTOY + "shadertoy"
-    URL_SHADERTOY_COMMENT = URL_SHADERTOY + "comment"
+    def __init__(self, num_processes=10):
+        self.pool = Pool(num_processes)
+        self.lock = Lock()
+        self._crawler = None
+        self._ids_to_crawl = set()
+        self._shaders = dict()
 
-    RE_SHADER_IDS = re.compile(r"""var gShaderIDs=\[(.+)\]""")
+    @property
+    def crawler(self):
+        if self._crawler is None:
+            self._crawler = ShadertoyCrawlerApi()
+            self._crawler.index_page()
+        return self._crawler
 
-    def __init__(self):
-        self._session = requests.session()
-        self._session.headers.update({
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Accept-Language": "en-GB,en;q=0.5",
-            "Connection": "keep-alive",
-            "DNT": "1",
-            "Host": self.HOST_SHADERTOY,
-            "Referer": self.URL_SHADERTOY,
-            "Upgrade-Insecure-Requests": "1",
-            "User-Agent": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:67.0) Gecko/20100101 Firefox/67.0",
-        })
+    def get_search_result_ids(self, sort_order="newest", offset=0, num=100):
+        # NOTE, this seems to be fixed in shadertoy.com
+        PAGE_SIZE = 12
 
-    def index_page(self):
-        response = self._session.get(url=self.URL_SHADERTOY)
-        assert response.status_code == 200
+        assert self.crawler
 
-    def get_search_result_shader_ids(self, sort="newest", offset=0, limit=12):
-        """
-        :param sort: str, "newest", "popular", "love", "hot"
-        :param offset:
-        :param limit:
-        :return:
-        """
-        response = self._session.get(
-            url=self.URL_SHADERTOY_RESULTS,
-            params={
-                "from": offset,
-                "num": limit,
-                "sort": sort,
-            }
+        actual_offset = offset
+        arguments = []
+        for i in range((num + PAGE_SIZE - 1) // PAGE_SIZE):
+            arguments.append(
+                (self.crawler, sort_order, actual_offset, PAGE_SIZE)
+            )
+            actual_offset += PAGE_SIZE
+
+        search_results = self.pool.starmap(self._get_search_results, arguments)
+
+        shader_ids = sorted(set(list(sum(search_results, []))[:num]))
+        #shader_ids = self._get_search_results(self.crawler, sort_order=sort_order, offset=0, limit=PAGE_LIMIT)
+
+        return shader_ids
+
+    def get_shaders(self, shader_ids):
+        MAX_SHADERS_AT_ONCE = 100
+
+        arguments = []
+        batched_shader_ids = shader_ids
+        while batched_shader_ids:
+            arguments.append(
+                tuple([self.crawler] + batched_shader_ids[:MAX_SHADERS_AT_ONCE])
+            )
+            batched_shader_ids = batched_shader_ids[MAX_SHADERS_AT_ONCE:]
+        shaders = self.pool.starmap(self._get_shaders, arguments)
+        shaders = sum(shaders, [])
+
+        arguments = [
+            (self.crawler, shader_id)
+            for shader_id in shader_ids
+        ]
+        shader_comments = self.pool.starmap(self._get_shader_comment, arguments)
+
+        assert len(shaders) == len(shader_comments)
+
+        for i in range(len(shaders)):
+            shaders[i]["comments"] = shader_comments[i]
+
+        return shaders
+
+    @staticmethod
+    def _get_search_results(crawler, sort_order, offset, num_page):
+        ids = crawler.get_search_result_shader_ids(
+            sort=sort_order, offset=offset, num_page=num_page
         )
+        return ids
 
-        shader_ids = set()
-        for row in re.findall(self.RE_SHADER_IDS, response.text):
-            for id in row.split(","):
-                shader_ids.add(id.strip(' "'))
+    @staticmethod
+    def _get_shaders(crawler, *shader_ids):
+        return crawler.get_shader_json(*shader_ids)
 
-        return sorted(shader_ids)
+    @staticmethod
+    def _get_shader_comment(crawler, shader_id):
+        return crawler.get_comment_json(shader_id)
 
-    def get_shader_json(self, *shader_ids):
-
-        response = self._session.post(
-            url=self.URL_SHADERTOY_SHADER,
-            data={
-                "s": json.dumps({"shaders": shader_ids}),
-                "nt": 1,
-                "nl": 1,
-            },
-            headers={
-                "Accept": "*/*",
-                "Referer": self.URL_SHADERTOY_VIEW_SHADER + shader_ids[0],
-                "Content-Type": "application/x-www-form-urlencoded",
-            }
-        )
-        return response.json()
-
-    def get_comment_json(self, shader_id):
-
-        response = self._session.post(
-            url=self.URL_SHADERTOY_COMMENT,
-            data={
-                "s": shader_id,
-            },
-            headers={
-                "Accept": "*/*",
-                "Referer": self.URL_SHADERTOY_VIEW_SHADER + shader_id,
-                "Content-Type": "application/x-www-form-urlencoded",
-            }
-        )
-        print(response.content)
-        return response.json()

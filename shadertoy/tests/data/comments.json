@@ -1,44 +1,42 @@
-{
-  "text": [
-    "cool way to make stars :) with noise ",
-    "Hollywood hole. Pretty, even if it is not what Uncle Albert's equations predict. :)",
-    "cool",
-    "Nice one, now I understand where they got that shape from. :)",
-    "That's actually pretty dang cool dude!"
-  ],
-  "date": [
-    "1556886212",
-    "1555056375",
-    "1555018223",
-    "1555010617",
-    "1555009237"
-  ],
-  "username": [
-    "jeyko",
-    "dr2",
-    "morimea",
-    "Dave_Hoskins",
-    "kindpotato"
-  ],
-  "userpicture": [
-    "/media/users/jeyko/profile.jpeg",
-    "/img/profile.jpg",
-    "/media/users/morimea/profile.jpeg",
-    "/media/users/Dave_Hoskins/profile.jpeg",
-    "/img/profile.jpg"
-  ],
-  "id": [
-    "lt2cW1",
-    "lljyzz",
-    "MljczR",
-    "lljyzR",
-    "Ml2cRR"
-  ],
-  "hidden": [
-    0,
-    0,
-    0,
-    0,
-    0
-  ]
-}
+[
+  {
+    "text": "cool way to make stars :) with noise ",
+    "date": "1556886212",
+    "username": "jeyko",
+    "userpicture": "/media/users/jeyko/profile.jpeg",
+    "id": "lt2cW1",
+    "hidden": 0
+  },
+  {
+    "text": "Hollywood hole. Pretty, even if it is not what Uncle Albert's equations predict. :)",
+    "date": "1555056375",
+    "username": "dr2",
+    "userpicture": "/img/profile.jpg",
+    "id": "lljyzz",
+    "hidden": 0
+  },
+  {
+    "text": "cool",
+    "date": "1555018223",
+    "username": "morimea",
+    "userpicture": "/media/users/morimea/profile.jpeg",
+    "id": "MljczR",
+    "hidden": 0
+  },
+  {
+    "text": "Nice one, now I understand where they got that shape from. :)",
+    "date": "1555010617",
+    "username": "Dave_Hoskins",
+    "userpicture": "/media/users/Dave_Hoskins/profile.jpeg",
+    "id": "lljyzR",
+    "hidden": 0
+  },
+  {
+    "text": "That's actually pretty dang cool dude!",
+    "date": "1555009237",
+    "username": "kindpotato",
+    "userpicture": "/img/profile.jpg",
+    "id": "Ml2cRR",
+    "hidden": 0
+  }
+]

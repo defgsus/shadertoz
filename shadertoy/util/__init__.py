@@ -1,3 +1,3 @@
 from .ShadertoyApi import ShadertoyApi
+from .ShadertoyCrawlerApi import ShadertoyCrawlerApi
 from .ShadertoyCrawler import ShadertoyCrawler
-from .ShadertoyDownloader import ShadertoyDownloader
