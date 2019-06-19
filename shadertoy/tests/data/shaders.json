@@ -1,0 +1,498 @@
+[
+  {
+    "ver": "0.1",
+    "info": {
+      "id": "3lj3WG",
+      "date": "1560951420",
+      "viewed": 49,
+      "name": "Volumetric Lighting Experiment",
+      "username": "SSHantaram",
+      "description": "Volumetric absorption and scattering",
+      "likes": 0,
+      "published": 1,
+      "flags": 0,
+      "tags": [
+        "raymarching",
+        "volume",
+        "lighting"
+      ],
+      "hasliked": 0
+    },
+    "renderpass": [
+      {
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "4dfGRr",
+            "channel": 0
+          }
+        ],
+        "code": "const int MAX_MARCHING_STEPS = 255;\nconst float MIN_DIST = 0.0;\nconst float MAX_DIST = 100.0;\nconst float EPSILON = 0.01;\nconst float VOLUME_STEP = 0.03;\nconst float VOLUME_STEP_LIGHT = 0.1;\nconst float VOLUME_DENSITY = 0.04;\nconst float LIGHT_INTESITY = 0.03;\n\n\n// 3D hash function\nfloat hash(vec3 p)\n{\n    p  = fract( p*0.3183099+.1 );\n\tp *= 17.0;\n    return fract( p.x*p.y*p.z*(p.x+p.y+p.z) );\n}\n\n// 3D precedural noise\nfloat noise( in vec3 x )\n{\n    vec3 p = floor(x);\n    vec3 f = fract(x);\n    f = f*f*(3.0-2.0*f);\n\t\n    // interpolate between hashes of adjacent grid points\n    return mix(mix(mix( hash(p+vec3(0,0,0)), \n                        hash(p+vec3(1,0,0)),f.x),\n                   mix( hash(p+vec3(0,1,0)), \n                        hash(p+vec3(1,1,0)),f.x),f.y),\n               mix(mix( hash(p+vec3(0,0,1)), \n                        hash(p+vec3(1,0,1)),f.x),\n                   mix( hash(p+vec3(0,1,1)), \n                        hash(p+vec3(1,1,1)),f.x),f.y),f.z);\n}\n\n// 3D noise layered in several octaves\nfloat layeredNoise(in vec3 x) {\n    x += vec3(10.0, 5.0, 6.0);\n    return 0.6*noise(x*5.0) + 0.4*noise(x*10.0) + 0.2*noise(x*16.0) - 0.2;\n}\n\n// singed distance function of the y=0 plane\nfloat planeSDF(vec3 p) {\n    return p.y;\n}\n\nfloat sphereSDF(vec3 p, vec3 center, float r) {\n    return length(center - p) - r;\n}\n\nfloat boxSDF(vec3 p, vec3 size) {\n    vec3 d = abs(p) - (size / 2.0);\n    \n    // Assuming p is inside the cube, how far is it from the surface?\n    // Result will be negative or zero.\n    float insideDistance = min(max(d.x, max(d.y, d.z)), 0.0);\n    \n    // Assuming p is outside the cube, how far is it from the surface?\n    // Result will be positive or zero.\n    float outsideDistance = length(max(d, 0.0));\n    \n    return insideDistance + outsideDistance;\n}\n\nfloat unionSDF(float distA, float distB) {\n    return min(distA, distB);\n}\n\n// singed distance function to enire scene\nfloat sceneSDF(vec3 samplePoint) {\n   \t//float sphere = sphereSDF(samplePoint, vec3(0.0, 0.0, 0.0), 1.0);\n    float box = boxSDF(samplePoint, vec3(1.5, 1.0, 1.5));\n    //return sphere;\n    return box;\n}\n\nfloat sampleVolume(vec3 p, float densityMultiplier) {\n    return layeredNoise(p)*densityMultiplier;\n}\n\n// integrate density along ray\nfloat marchDensity(vec3 startPoint, vec3 marchingDirection, float start, float end) {\n    float depth = start;\n    float density = 0.0;\n    float d;\n    vec3 samplePoint;\n    \n    while (depth < end) {\n        samplePoint = startPoint + depth * marchingDirection;\n    \td = sceneSDF(samplePoint);\n        // outside volume\n        if (d > EPSILON) {\n            depth += d;\n        }\n        // inside volume\n        else {\n            // sum desity values\n         \tdensity += sampleVolume(samplePoint, VOLUME_DENSITY)*min(-d, VOLUME_STEP_LIGHT);\n            depth += VOLUME_STEP_LIGHT;\n        }\n        // opaque: stop early\n        if (density >= 1.0) return 1.0;\n    }\n    return density;\n}\n\nfloat volumeAbsorption(float lightIntensity, float acumulatedDensityToPoint) {\n    return max(0.0, lightIntensity - acumulatedDensityToPoint);\n}\n\n// integrate illumination along ray\nfloat marchVolumetricLighting(vec3 eye, vec3 marchingDirection, vec3 lightPos, float start, float end) {\n    float depth = start;\n    float accumulatedDensity = 0.0;\n    float brightness = 0.0;\n    float d;\n    vec3 samplePoint;\n    \n    while (depth < end) {\n        samplePoint = eye + depth * marchingDirection;\n    \td = sceneSDF(samplePoint);\n        // outside volume\n        if (d > EPSILON) {\n            depth += d;\n        }\n        // inside volume\n        else {\n            float densityAtPosition = sampleVolume(samplePoint, VOLUME_DENSITY);\n            // integrated density between eye and point\n            accumulatedDensity += densityAtPosition*min(-d, VOLUME_STEP);\n            // get integrated density between point and light\n            vec3 lightRay = vec3(lightPos - samplePoint);\n            float acumulatedDensityToLight = marchDensity(samplePoint, normalize(lightRay), start, end);\n            // point brightness is dimmed by volume between eye and point\n            float pointBrightness = volumeAbsorption(LIGHT_INTESITY, acumulatedDensityToLight);\n            // sum up brightness values along ray\n            brightness += volumeAbsorption(pointBrightness, accumulatedDensity);\n            depth += VOLUME_STEP;\n        }\n        if (brightness >= 1.0) return 1.0;\n    }\n    return brightness;\n}\n\nvec3 rayDirection(float fieldOfView, vec2 size, vec2 fragCoord) {\n    vec2 xy = fragCoord - size / 2.0;\n    float z = size.y / tan(radians(fieldOfView) / 2.0);\n    return normalize(vec3(xy, -z));\n}\n\n// estimate normal by aproximatind the first deriviative of the sceneSDF\nvec3 estimateNormal(vec3 p) {\n    return normalize(vec3(\n        sceneSDF(vec3(p.x + EPSILON, p.y, p.z)) - sceneSDF(vec3(p.x - EPSILON, p.y, p.z)),\n        sceneSDF(vec3(p.x, p.y + EPSILON, p.z)) - sceneSDF(vec3(p.x, p.y - EPSILON, p.z)),\n        sceneSDF(vec3(p.x, p.y, p.z  + EPSILON)) - sceneSDF(vec3(p.x, p.y, p.z - EPSILON))\n    ));\n}\n\n// generate camera transform\nmat3 viewMatrix(vec3 eye, vec3 center, vec3 up) {\n    // Based on gluLookAt man page\n    vec3 f = normalize(center - eye);\n    vec3 s = normalize(cross(f, up));\n    vec3 u = cross(s, f);\n    return mat3(s, u, -f);\n}\n\n\nvoid mainImage( out vec4 fragColor, in vec2 fragCoord )\n{\n\tvec3 viewDir = rayDirection(45.0, iResolution.xy, fragCoord);\n   \t//vec3 eye = vec3(0.0, -5.0, -6.0);\n    vec3 eye = vec3(6.0*cos(iTime*0.1), -3.0, 6.0*sin(iTime*0.1));\n    mat3 viewToWorld = viewMatrix(eye, vec3(0.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0));\n    vec3 worldDir = viewToWorld * viewDir;\n    vec3 lightPos = vec3(1.2*cos(iTime), 1.0, 1.2*sin(iTime));\n    \n    float brightness = marchVolumetricLighting(eye, worldDir, lightPos, MIN_DIST, MAX_DIST);\n\n    \n    vec3 color = vec3(1.0, 1.0, 1.0)*brightness;\n    \n    fragColor = vec4(color, 1.0);\n}",
+        "name": "Image",
+        "description": "",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "ver": "0.1",
+    "info": {
+      "id": "3sSSzG",
+      "date": "1560938690",
+      "viewed": 21,
+      "name": "Oak foise2",
+      "username": "deerfeeder",
+      "description": "A mirrored noise/",
+      "likes": 1,
+      "published": 1,
+      "flags": 0,
+      "tags": [
+        "swirl",
+        "perlin",
+        "curl",
+        "simplex"
+      ],
+      "hasliked": 0
+    },
+    "renderpass": [
+      {
+        "inputs": [],
+        "outputs": [],
+        "code": "// Fork of \"Oak foise\" by deerfeeder. https://shadertoy.com/view/MtKcD3\n// 2019-04-01 13:33:55\n\n\nconst int noiseSwirlSteps = 8;\nconst float noiseSwirlValue = 0.5;\nconst float noiseSwirlStepValue = noiseSwirlValue / float(noiseSwirlSteps);\n\nconst float noiseScale = 2.;\nconst float noiseTimeScale = 0.1;\n\n\nfloat simplex(vec3 v);\nfloat getNoise(vec3 v);\n\n\nvoid mainImage( out vec4 fragColor, in vec2 fragCoord )\n{\n\tvec2 uv = 0.5-fragCoord.xy / iResolution.xy;\n  \tuv = abs(uv);\n\tfloat noise = getNoise(vec3(uv * noiseScale, iTime*noiseTimeScale));\n    noise = noise * noise * noise * noise * 0.5;  //more contrast\n    fragColor = vec4(noise, noise, noise, 1.0);\n}\n\n\n\nfloat fbm3(vec3 v) {\n    float result = simplex(v);\n    result += simplex(v * 2.) / 2.;\n    result += simplex(v * 4.) / 4.;\n    result /= (1. + 1./2. + 1./4.);\n    return result;\n}\n\nfloat fbm5(vec3 v) {\n    float result = simplex(v);\n    result += simplex(v * 2.) / 2.;\n    result += simplex(v * 4.) / 4.;\n    result += simplex(v * 8.) / 8.;\n    result += simplex(v * 16.) / 16.;\n    result /= (1. + 1./2. + 1./4. + 1./8. + 1./16.);\n    return result;\n}\n\nfloat getNoise(vec3 v) {\n    //  make it curl\n    for (int i=0; i<noiseSwirlSteps; i++) {\n    \tv.xy += vec2(fbm3(v), fbm3(vec3(v.xy, v.z + 1000.))) * noiseSwirlStepValue;\n    }\n    //  normalize\n    return fbm5(v) / 2. + 0.5;\n}\n\n//\n// Description : Array and textureless GLSL 2D/3D/4D simplex\n//               noise functions.\n//      Author : Ian McEwan, Ashima Arts.\n//  Maintainer : ijm\n//     Lastmod : 20110822 (ijm)\n//     License : Copyright (C) 2011 Ashima Arts. All rights reserved.\n//               Distributed under the MIT License. See LICENSE file.\n//               https://github.com/ashima/webgl-noise\n//\n\nvec3 mod289(vec3 x) {\n  return x - floor(x * (1.0 / 219.0)) * 219.0;\n}\n\nvec4 mod289(vec4 x) {\n  return x - floor(x * (1.0 / 299.0)) * 299.0;\n}\n\nvec4 permute(vec4 x) {\n     return mod289(((x*4.0)+1.0)*x);\n}\n\nvec4 taylorInvSqrt(vec4 r)\n{\n  return 1.790159 - 0.3095314 * r;\n}\n\nfloat simplex(vec3 v)\n  {\n  const vec2  C = vec2(1.0/6.00, 1.0/3.00) ;\n  const vec4  D = vec4(0.0, 0.5, 1.0, 3.22);\n\n// First corner\n  vec3 i  = floor(v + dot(v, C.yyy) );\n  vec3 x0 =   v - i + dot(i, C.xxx) ;\n\n// Other corners\n  vec3 g = step(x0.yzx, x0.xyz);\n  vec3 l = 1.0 - g;\n  vec3 i1 = min( g.xyz, l.zxy );\n  vec3 i2 = max( g.xyz, l.zxy );\n\n  //   x0 = x0 - 0.0 + 0.0 * C.xxx;\n  //   x1 = x0 - i1  + 1.0 * C.xxx;\n  //   x2 = x0 - i2  + 2.0 * C.xxx;\n  //   x3 = x0 - 1.0 + 3.0 * C.xxx;\n  vec3 x1 = x0 - i1 + C.xxx;\n  vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 1/3 = C.y\n  vec3 x3 = x0 - D.yyy;      // -1.0+3.0*C.x = -0.5 = -D.y\n\n// Permutations\n  i = mod289(i);\n  vec4 p = permute( permute( permute(\n             i.z + vec4(0.0, i1.z, i2.z, 1.0 ))\n           + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))\n           + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));\n\n// Gradients: 7x7 points over a square, mapped onto an octahedron.\n// The ring size 17*17 = 289 is close to a multiple of 49 (49*6 = 294)\n  float n_ = 0.142857142857; // 1.0/7.0\n  vec3  ns = n_ * D.wyz - D.xzx;\n\n  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);  //  mod(p,7*7)\n\n  vec4 x_ = floor(j * ns.z);\n  vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)\n\n  vec4 x = x_ *ns.x + ns.yyyy;\n  vec4 y = y_ *ns.x + ns.yyyy;\n  vec4 h = 1.0 - abs(x) - abs(y);\n\n  vec4 b0 = vec4( x.xy, y.xy );\n  vec4 b1 = vec4( x.zw, y.zw );\n\n  //vec4 s0 = vec4(lessThan(b0,0.0))*2.0 - 1.0;\n  //vec4 s1 = vec4(lessThan(b1,0.0))*2.0 - 1.0;\n  vec4 s0 = floor(b0)*2.0 + 1.0;\n  vec4 s1 = floor(b1)*2.0 + 1.0;\n  vec4 sh = -step(h, vec4(0.0));\n\n  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;\n  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;\n\n  vec3 p0 = vec3(a0.xy,h.x);\n  vec3 p1 = vec3(a0.zw,h.y);\n  vec3 p2 = vec3(a1.xy,h.z);\n  vec3 p3 = vec3(a1.zw,h.w);\n\n//Normalise gradients\n  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));\n  p0 *= norm.x;\n  p1 *= norm.y;\n  p2 *= norm.z;\n  p3 *= norm.w;\n\n// Mix final noise value\n  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);\n  m = m * m;\n  return 200.0 *sin(iTime * 0.1) * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),\n                                dot(p2,x2), dot(p3,x3) ) );\n  }",
+        "name": "Image",
+        "description": "",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "ver": "0.1",
+    "info": {
+      "id": "3t23WG",
+      "date": "1560942443",
+      "viewed": 71,
+      "name": "Cosine - distance",
+      "username": "iq",
+      "description": "Exact euclidean distance to a cosine wave of arbitrary amplitude, frequency, phase and offset. It is exact indeed but requires 12 iterations to get full floating point precision.",
+      "likes": 7,
+      "published": 3,
+      "flags": 0,
+      "tags": [
+        "2d",
+        "sdf",
+        "distance",
+        "cosine"
+      ],
+      "hasliked": 0
+    },
+    "renderpass": [
+      {
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "4dfGRr",
+            "channel": 0
+          }
+        ],
+        "code": "// The MIT License\n// Copyright \u00a9 2019 Inigo Quilez\n// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\n\n\n// Distance to cosine wave of arbitrary amplitude, frequency, phase and offset\n// by reducing the problem to the first quadrant of a unit cosine wave, and then\n// fining the derivative of the distance squared. The problem reduces to\n//\n// For y(x) = w\u00b7cos(x)\n//\n// d\u00b2 (p,x) = (x-p.x)\u00b2 + (w\u00b7cos(x)-p.y)\u00b2\n// d\u00b2'(p,x) = 2[x-p.x - w\u00b7sin(x)\u00b7(w\u00b7cos(x)-p.y)] = 0\n//\n// I implemented two different root finders. A simple bisection method which uses\n// 24 iterations to give full floating point precision, and an 8 iterations\n// bisection followed by 4 newtown-raphson method (12 iterations total) that\n// provides full floating point precision as well. I am always worried about\n// convergence of newtwon-raphson methods, so I give it only as an option.\n\n\n\n// List of some other 2D distances:\n//\n// Triangle:             https://www.shadertoy.com/view/XsXSz4\n// Isosceles Triangle:   https://www.shadertoy.com/view/MldcD7\n// Regular Triangle:     https://www.shadertoy.com/view/Xl2yDW\n// Regular Pentagon:     https://www.shadertoy.com/view/llVyWW\n// Regular Octogon:      https://www.shadertoy.com/view/llGfDG\n// Rounded Rectangle:    https://www.shadertoy.com/view/4llXD7\n// Rhombus:              https://www.shadertoy.com/view/XdXcRB\n// Trapezoid:            https://www.shadertoy.com/view/MlycD3\n// Polygon:              https://www.shadertoy.com/view/wdBXRW\n// Hexagram:             https://www.shadertoy.com/view/tt23RR\n// Regular Star:         https://www.shadertoy.com/view/3tSGDy\n// Ellipse 1:            https://www.shadertoy.com/view/4sS3zz\n// Ellipse 2:            https://www.shadertoy.com/view/4lsXDN\n// Quadratic Bezier:     https://www.shadertoy.com/view/MlKcDD\n// Uneven Capsule:       https://www.shadertoy.com/view/4lcBWn\n// Vesica:               https://www.shadertoy.com/view/XtVfRW\n// Cross:                https://www.shadertoy.com/view/XtGfzw\n// Pie:                  https://www.shadertoy.com/view/3l23RK\n// Arc:                  https://www.shadertoy.com/view/wl23RK\n// Horseshoe:            https://www.shadertoy.com/view/WlSGW1\n//\n// and many more here:   http://www.iquilezles.org/www/articles/distfunctions2d/distfunctions2d.htm\n\n\n#if 1\n//----------------------------------------------------------------------\n// Distance to y(x) = a + b*cos(cx+d)\n//----------------------------------------------------------------------\nfloat udCos( in vec2 p, in float a, in float b, in float c, in float d )\n{\n    // convert all data to a primitive cosine wave\n    p = c*(p-vec2(d,a));\n\n    // reduce to principal half cycle\n    const float TPI = 6.28318530718;\n    p.x = mod( p.x, TPI); if( p.x>(0.5*TPI) ) p.x = TPI - p.x;\n\n    // find zero of derivative (minimize distance)\n    float xa = 0.0, xb = TPI;\n    for( int i=0; i<24; i++ ) // 24 bit precision\n    {\n        float x = 0.5*(xa+xb);\n        float y = x-p.x+b*c*sin(x)*(p.y-b*c*cos(x));\n        if( y<0.0 ) xa = x; else xb = x;\n    }\n    float x = 0.5*(xa+xb);\n    \n    // compute distance    \n    vec2 q = vec2(x,b*c*cos(x));\n    return length(p-q)/c;\n}\n\n#else\n\n//----------------------------------------------------------------------\n// Distance to y(x) = a + b*cos(cx+d)\n//----------------------------------------------------------------------\nfloat udCos( in vec2 p, in float a, in float b, in float c, in float d )\n{\n    // convert all data to a primitive cosine wave\n    p = c*(p-vec2(d,a));\n    \n    // reduce to principal half cycle\n    const float TPI = 6.28318530718;\n    p.x = mod( p.x, TPI); if( p.x>(0.5*TPI) ) p.x = TPI - p.x;\n\n    // find zero of derivative (minimize distance)\n    float xa = 0.0, xb = TPI;\n    for( int i=0; i<8; i++ ) // bisection, 7 bits more or less\n    {\n        float x = 0.5*(xa+xb);\n        float si = sin(x);\n        float co = cos(x);\n        float y = x-p.x+b*c*si*(p.y-b*c*co);\n        if( y<0.0 ) xa = x; else xb = x;\n    }\n    float x = 0.5*(xa+xb);\n    for( int i=0; i<4; i++ ) // newtown-raphson, 28 bits more or less\n    {\n        float si = sin(x);\n        float co = cos(x);\n        float  f = x - p.x + b*c*(p.y*si - b*c*si*co);\n        float df = 1.0     + b*c*(p.y*co - b*c*(2.0*co*co-1.0));\n        x = x - f/df;\n    }\n    \n    // compute distance    \n    vec2 q = vec2(x,b*c*cos(x));\n    return length(p-q)/c;\n}\n#endif\n\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord)\n{\n\tvec2 p = (2.0*fragCoord-iResolution.xy)/iResolution.y;\n        \n    // animate\n    float t = iTime/3.0;\n    float ca = 0.0 + 0.4*cos(t*1.1+1.0); // offset    (y position)\n    float cb = 0.3 + 0.2*cos(t*1.2+0.0); // amplitude (y scale)\n    float cc = 9.0 + 6.0*cos(t*1.3+2.0); // frequency (x scale)\n    float cd = 2.0 + 2.0*cos(t*1.0+3.0); // phase     (x position)\n    \n    // sdf\n    float d = udCos( p, ca, cb, cc, cd );\n    \n    // colorize\n    vec3 col = vec3(1.0) - sign(d)*vec3(0.1,0.4,0.7);\n\tcol *= 1.05 - exp(-4.0*abs(d));\n\tcol *= 0.8 + 0.2*cos(110.0*d);\n\tcol = mix( col, vec3(1.0), 1.0-smoothstep(0.0,0.015,abs(d)) );\n    \n\tfragColor = vec4(col,1.0);}\n",
+        "name": "Image",
+        "description": "",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "ver": "0.1",
+    "info": {
+      "id": "Wl23WG",
+      "date": "1560943957",
+      "viewed": 25,
+      "name": "\u5927\u9f99\u732b - Quicky#003",
+      "username": "totetmatt",
+      "description": "Thanks IQ's resources for square formula",
+      "likes": 0,
+      "published": 3,
+      "flags": 0,
+      "tags": [
+        "2d"
+      ],
+      "hasliked": 0
+    },
+    "renderpass": [
+      {
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "4dfGRr",
+            "channel": 0
+          }
+        ],
+        "code": "#define time iTime\nmat2 rotate2d(float _angle){\n    return mat2(cos(_angle),-sin(_angle),\n                sin(_angle),cos(_angle));\n}\n\nfloat box(in vec2 _st, in vec2 _size){\n\n    vec2 uv = smoothstep(_size,\n                        _size+vec2(0.001),\n                        _st);\n    uv *= smoothstep(_size,\n                    _size+vec2(0.001),\n                    vec2(1.0)-_st);\n    return uv.x+uv.y;\n}\n\nfloat sdBox( in vec2 p, in vec2 b )\n{\n    vec2 d = abs(p)-b;\n    return length(max(d,vec2(0))) + min(max(d.x,d.y),0.0);\n}\nvec3 sq(vec2 uv){\n vec2 ra =  vec2(0.1,0.1);\n float b = sdBox(uv,ra);\n float bump = abs(sin(iTime/3.)/50.);\n return  mix( vec3(0.) , vec3(1.0), 1.0-smoothstep(0.019+bump/2.,0.020+bump,abs(b)) );\n}\nvec3 scene(vec2 uv) {\nuv = sin(uv*10.)/(10.+sin(time)*.10);;\nreturn max(sq(uv * rotate2d(time)),sq(((uv* -rotate2d(time*3.))+vec2(0.1,0.1))* rotate2d(-time+log(time)))) ;\n}\nvoid mainImage( out vec4 fragColor, in vec2 fragCoord )\n{\n    vec2 uv =  (fragCoord-.5*iResolution.xy)/iResolution.y;\n  \n    float off = sin(time)*0.5+.5;\n    vec3 color = mix(vec3(0.3,0.,0.32)+off,vec3(.5,.9,.9)-off,scene(uv));\n    \n    fragColor = vec4(\n        color,\n        1.0);\n}",
+        "name": "Image",
+        "description": "",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "ver": "0.1",
+    "info": {
+      "id": "Wl2GWy",
+      "date": "1560963003",
+      "viewed": 74,
+      "name": "f(z) = i^z + c",
+      "username": "JJJK",
+      "description": "https://www.reddit.com/r/math/comments/c2fiql/a_very_interesting_fractal/\n\nQuick&dirty shadertoy \"port\".",
+      "likes": 1,
+      "published": 3,
+      "flags": 0,
+      "tags": [
+        "fractalsmandelbrot"
+      ],
+      "hasliked": 0
+    },
+    "renderpass": [
+      {
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "4dfGRr",
+            "channel": 0
+          }
+        ],
+        "code": "/*\nMade by reddit user /u/jpayne36\n*/\n\nfloat scale = 1.0 / 128.0;\nvec2 pos = vec2(0.0, 0.0);\n\nfloat e = 2.718281828459045;\nfloat pi = 3.14159265;\n\nstruct cmplx { float r; float i; };\ncmplx c() { return cmplx(0.0, 0.0); }\ncmplx c(float r) { return cmplx(r, 0.0); }\ncmplx c(float r, float i) { return cmplx(r, i); }\n\ncmplx add(cmplx c1, cmplx c2) { return cmplx(c1.r + c2.r, c1.i + c2.i); }\ncmplx sub(cmplx c1, cmplx c2) { return cmplx(c1.r - c2.r, c1.i - c2.i); }\ncmplx mul(cmplx c1, cmplx c2) { return cmplx(c1.r*c2.r - c1.i*c2.i, c1.r*c2.i + c1.i*c2.r); }\ncmplx div(cmplx c1, cmplx c2)\n{\n\tif (c2.r == 0.0 && c2.i == 0.0) { return c(); }\n\treturn cmplx( (c1.r*c2.r + c1.i*c2.i)/(c2.r*c2.r + c2.i*c2.i), (c1.i*c2.r - c1.r*c2.i)/(c2.r*c2.r + c2.i*c2.i) );\n}\n\nfloat c_abs(cmplx c) { return sqrt(c.r*c.r + c.i*c.i); }\ncmplx c_pow(cmplx c1, cmplx c2)\n{\n\tif (c1.r == 0.0 && c1.i == 0.0) { return c(); }\n\tfloat r, a, c, d;\n\tr = c_abs(c1);\n\tif (c1.r == 0.0) { a = pi / 2.0; } else { a = atan(c1.i/c1.r); }\n\tc = ( pow(r, c2.r) )/( pow(e, c2.i*a) );\n\td = c2.i*log(r) + c2.r*a;\n\treturn cmplx(c*cos(d), c*sin(d));\n}\n\nint mandelbrot(cmplx a, cmplx z, int iters)\n{\n\tfor (int i = 0; i < iters; i++)\n\t{\n\t\tif (c_abs(z) > 100.0) { return i; }\n\t\tz = add( c_pow(c(0.0,1.0), z), a );\n\t}\n\treturn iters;\n}\n\nvec4 effect(vec2 screen_coords)\n{\n\tvec2 uv = screen_coords/iResolution.xy;\n\tuv.x *= iResolution.x/iResolution.y;\n\tvec2 xy = vec2( (uv.x - iResolution.x/iResolution.y/2.0)/scale + pos.x, (uv.y - 0.5)/scale + pos.y );\n\tint a = mandelbrot( c(xy.x, xy.y), c(), 100 );\n\tfloat col = float(a)/100.0;\n\treturn vec4(vec3(col), 1.0);\n}\n\nvoid mainImage( out vec4 fragColor, in vec2 fragCoord )\n{\n    float f = sin(iTime*0.2)*0.5 + 0.5;\n    pos = vec2(0.0, -0.2);\n    float maxZoom = exp(9.5);\n    scale = mix(1.0/128.0, maxZoom/128.0, f);\n    \n    fragColor = effect(fragCoord);\n}",
+        "name": "Image",
+        "description": "",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "ver": "0.1",
+    "info": {
+      "id": "Wlj3Wy",
+      "date": "1560965947",
+      "viewed": 17,
+      "name": "slider",
+      "username": "eclypse",
+      "description": "slider",
+      "likes": 0,
+      "published": 1,
+      "flags": 0,
+      "tags": [
+        "slider"
+      ],
+      "hasliked": 0
+    },
+    "renderpass": [
+      {
+        "inputs": [
+          {
+            "id": "4dfGRn",
+            "filepath": "/media/a/8de3a3924cb95bd0e95a443fff0326c869f9d4979cd1d5b6e94e2a01f5be53e9.jpg",
+            "previewfilepath": "/media/ap/8de3a3924cb95bd0e95a443fff0326c869f9d4979cd1d5b6e94e2a01f5be53e9.jpg",
+            "type": "texture",
+            "channel": 0,
+            "sampler": {
+              "filter": "mipmap",
+              "wrap": "repeat",
+              "vflip": "true",
+              "srgb": "false",
+              "internal": "byte"
+            },
+            "published": 1
+          },
+          {
+            "id": "Xsf3Rn",
+            "filepath": "/media/a/cbcbb5a6cfb55c36f8f021fbb0e3f69ac96339a39fa85cd96f2017a2192821b5.png",
+            "previewfilepath": "/media/ap/cbcbb5a6cfb55c36f8f021fbb0e3f69ac96339a39fa85cd96f2017a2192821b5.png",
+            "type": "texture",
+            "channel": 1,
+            "sampler": {
+              "filter": "mipmap",
+              "wrap": "repeat",
+              "vflip": "true",
+              "srgb": "false",
+              "internal": "byte"
+            },
+            "published": 1
+          }
+        ],
+        "outputs": [
+          {
+            "id": "4dfGRr",
+            "channel": 0
+          }
+        ],
+        "code": "void mainImage( out vec4 fragColor, in vec2 fragCoord )\n{\n    // Normalized pixel coordinates (from 0 to 1)\n    vec2 uv = fragCoord/iResolution.xy;\n\n    // Time varying pixel color\n    vec3 col = 0.5 + 0.5*cos(iTime+uv.xyx+vec3(0,2,4));\n\t\n    float t = pow(fract(iTime * 0.5), 5.);\n    float progress = t;\n    float slide = smoothstep(uv.x, uv.x + .01, progress);\n    \n   \tvec4 img = texture(iChannel0, uv);\n    vec4 img1 = texture(iChannel1, uv);\n    // Output to screen\n    fragColor = mix(img, img1, slide);\n}",
+        "name": "Image",
+        "description": "",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "ver": "0.1",
+    "info": {
+      "id": "Wt23WG",
+      "date": "1560940392",
+      "viewed": 25,
+      "name": "Simplex Gradient",
+      "username": "BlackCat",
+      "description": "Simplex Gradient",
+      "likes": 0,
+      "published": 1,
+      "flags": 0,
+      "tags": [
+        "gradient"
+      ],
+      "hasliked": 0
+    },
+    "renderpass": [
+      {
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "4dfGRr",
+            "channel": 0
+          }
+        ],
+        "code": "#define SPEED 1.0\n\n#define TOP_COLOR vec3(.082,.09,.11)\n#define BOTTOM_COLOR vec3(.796,.204,.122)\n//#define TOP_COLOR vec3(.0,.0,.0)\n//#define BOTTOM_COLOR vec3(1.,1.,1.)\n\n\nvec3 random3(vec3 c) {\n    float j = 4096.0*sin(dot(c,vec3(17.0, 59.4, 15.0)));\n    vec3 r;\n    r.z = fract(512.0*j);\n    j *= .125;\n    r.x = fract(512.0*j);\n    j *= .125;\n    r.y = fract(512.0*j);\n    return r-0.5;\n}\n\n// snoise function author @patriciogv ( patriciogonzalezvivo.com ) - 2015\nconst float F3 =  0.3333333;\nconst float G3 =  0.1666667;\nfloat snoise(vec3 p) {\n\n    vec3 s = floor(p + dot(p, vec3(F3)));\n    vec3 x = p - s + dot(s, vec3(G3));\n\n    vec3 e = step(vec3(0.0), x - x.yzx);\n    vec3 i1 = e*(1.0 - e.zxy);\n    vec3 i2 = 1.0 - e.zxy*(1.0 - e);\n\n    vec3 x1 = x - i1 + G3;\n    vec3 x2 = x - i2 + 2.0*G3;\n    vec3 x3 = x - 1.0 + 3.0*G3;\n\n    vec4 w, d;\n\n    w.x = dot(x, x);\n    w.y = dot(x1, x1);\n    w.z = dot(x2, x2);\n    w.w = dot(x3, x3);\n\n    w = max(0.6 - w, 0.0);\n\n    d.x = dot(random3(s), x);\n    d.y = dot(random3(s + i1), x1);\n    d.z = dot(random3(s + i2), x2);\n    d.w = dot(random3(s + 1.0), x3);\n\n    w *= w;\n    w *= w;\n    d *= w;\n\n    return dot(d, vec4(52.0));\n}\n\nfloat grad(vec2 uv)\n{\n\treturn uv.y + sin(.66 * uv.x * uv.x * cos(2. * uv.x) * 30.6) / 40. + snoise(vec3((uv * 20.).xy, SPEED * iTime)) / 20.;\n}\n\nvoid mainImage( out vec4 fragColor, in vec2 fragCoord )\n{\n\tvec2 uv = fragCoord/iResolution.xy;\n\n\tvec3 col = mix(BOTTOM_COLOR, TOP_COLOR, grad(uv));\n\n\tfragColor = vec4(col,1.0);\n}",
+        "name": "Image",
+        "description": "",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "ver": "0.1",
+    "info": {
+      "id": "Wt2GWG",
+      "date": "1560936419",
+      "viewed": 34,
+      "name": "Molecular Waltz",
+      "username": "dr2",
+      "description": "  Waltzing with molecules (mouseable).\n  Rigid-body molecular dynamics; depending on view, the ridden molecule \n  is either transparent or shown in grey.\n",
+      "likes": 3,
+      "published": 3,
+      "flags": 32,
+      "tags": [
+        "collision",
+        "physics",
+        "md",
+        "rigidbody",
+        "moleculardynamics"
+      ],
+      "hasliked": 0
+    },
+    "renderpass": [
+      {
+        "inputs": [
+          {
+            "id": "4dXGR8",
+            "filepath": "/media/previz/buffer00.png",
+            "previewfilepath": "/media/previz/buffer00.png",
+            "type": "buffer",
+            "channel": 0,
+            "sampler": {
+              "filter": "linear",
+              "wrap": "clamp",
+              "vflip": "true",
+              "srgb": "false",
+              "internal": "byte"
+            },
+            "published": 1
+          }
+        ],
+        "outputs": [
+          {
+            "id": "4dfGRr",
+            "channel": 0
+          }
+        ],
+        "code": "// \"Molecular Waltz\" by dr2 - 2019\n// License: Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License\n\nfloat PrBoxDf (vec3 p, vec3 b);\nmat3 QtToRMat (vec4 q);\nvec3 HsvToRgb (vec3 c);\nvec4 Loadv4 (int idVar);\n\n#define S_BIG  1  // big/small system - must also change in buffer shader\n#if S_BIG\nconst int nMolE = 6;\n#else\nconst int nMolE = 5;\n#endif\n\nvec3 rSph[4], ltDir, qnHit, rdSign, vnBlk;\nfloat dstFar, hbLen;\nint idObj, idMol, rideMol;\nbool riding;\nconst int nMol = nMolE * nMolE * nMolE;\nconst int nsMol = 4;\nconst float pi = 3.14159;\n\nfloat ObjDf (vec3 p)\n{\n  vec4 sLen, rsLen;\n  vec3 eWid;\n  float dMin, d;\n  dMin = dstFar;\n  sLen = vec4 (vec3 (hbLen - 0.4), 0.);\n  if (riding) {\n    d = - PrBoxDf (p, vec3 (sLen));\n    if (d < dMin) { dMin = d;  idObj = 1; }\n  } else {\n    rsLen = vec4 (sLen.xyz * rdSign, 0.);\n    eWid = vec3 (0.04);\n    d = min (min (\n       PrBoxDf (p - rsLen.xww, eWid + sLen.wyz),\n       PrBoxDf (p - rsLen.wyw, eWid + sLen.xwz)),\n       PrBoxDf (p - rsLen.wwz, eWid + sLen.xyw));\n    if (d < dMin) { dMin = d;  idObj = 1; }\n    p = abs (p);\n    d = min (min (\n       PrBoxDf (p - sLen.wyz, eWid + sLen.xww),\n       PrBoxDf (p - sLen.xwz, eWid + sLen.wyw)),\n       PrBoxDf (p - sLen.xyw, eWid + sLen.wwz));\n    if (d < dMin) { dMin = d;  idObj = 2; }\n  }\n  return dMin;\n}\n\nfloat ObjRay (vec3 ro, vec3 rd)\n{\n  float dHit, d;\n  dHit = 0.;\n  for (int j = 0; j < 150; j ++) {\n    d = ObjDf (ro + dHit * rd);\n    dHit += d;\n    if (d < 0.001 || dHit > dstFar) break;\n  }\n  return dHit;\n}\n\nvec3 ObjNf (vec3 p)\n{\n  vec4 v;\n  vec2 e = vec2 (0.0001, -0.0001);\n  v = vec4 (- ObjDf (p + e.xxx), ObjDf (p + e.xyy), ObjDf (p + e.yxy), ObjDf (p + e.yyx));\n  return normalize (2. * v.yzw - dot (v, vec4 (1.)));\n}\n\nfloat SphHit (vec3 ro, vec3 rd)\n{\n  mat3 mRot;\n  vec3 rm, v, vn;\n  float dMin, b, d, w, sz;\n  dMin = dstFar;\n  sz = 0.5;\n  for (int n = 0; n < nMol; n ++) {\n    if (n == rideMol && riding) continue;\n    rm = Loadv4 (4 * n).xyz;\n    mRot = QtToRMat (Loadv4 (4 * n + 2));\n    for (int j = 0; j < nsMol; j ++) {\n      v = ro - (rm + mRot * rSph[j]);\n      b = dot (rd, v);\n      w = b * b + sz * sz - dot (v, v);\n      if (w >= 0.) {\n        d = - b - sqrt (w);\n        if (d > 0. && d < dMin) {\n          dMin = d;\n          idMol = n;\n          vn = v + d * rd;\n        }\n      }\n    }\n  }\n  qnHit = vn / sz;\n  return dMin;\n}\n\nfloat SphHitSh (vec3 ro, vec3 rd, float rng)\n{\n  mat3 mRot;\n  vec3 rm, v;\n  float dMin, b, d, w, sz;\n  dMin = dstFar;\n  sz = 0.5;\n  for (int n = 0; n < nMol; n ++) {\n    rm = Loadv4 (4 * n).xyz;\n    mRot = QtToRMat (Loadv4 (4 * n + 2));\n    for (int j = 0; j < nsMol; j ++) {\n      v = ro - (rm + mRot * rSph[j]);\n      b = dot (rd, v);\n      w = b * b + sz * sz - dot (v, v);\n      if (w >= 0.) {\n        d = - b - sqrt (w);\n        if (d > 0. && d < dMin) dMin = d;\n      }\n    }\n  }\n  return smoothstep (0.5 * rng, rng, dMin);\n}\n\nfloat BlkHit (vec3 ro, vec3 rd)\n{\n  vec3 v, tm, tp, u;\n  float dMin, dn, df;\n  dMin = dstFar;\n  v = ro / rd;\n  tp = (hbLen - 0.4) / abs (rd) - v;\n  tm = - tp - 2. * v;\n  dn = max (max (tm.x, tm.y), tm.z);\n  df = min (min (tp.x, tp.y), tp.z);\n  if (df > 0. && dn < df) {\n    dMin = dn;\n    vnBlk = - sign (rd) * step (tm.zxy, tm) * step (tm.yzx, tm);\n  }\n  return dMin;\n}\n\nfloat BlkHitSil (vec3 ro, vec3 rd)\n{\n  vec3 v, tm, tp;\n  float dn, df;\n  v = ro / rd;\n  tp = (hbLen - 0.4) / abs (rd) - v;\n  tm = - tp - 2. * v;\n  dn = max (max (tm.x, tm.y), tm.z);\n  df = min (min (tp.x, tp.y), tp.z);\n  return (df > 0. && dn < df) ? dn : dstFar;\n}\n\nvec3 ShowScene (vec3 ro, vec3 rd)\n{\n  vec3 vn, col, w;\n  float dstSph, dstObj, sh, t;\n  rdSign = sign (rd);\n  dstObj = ObjRay (ro, rd);\n  t = -1. / (2. * sqrt (2.));\n  rSph[0] = vec3 (-0.5, 0., - t);\n  rSph[1] = vec3 (0.5, 0., - t);\n  rSph[2] = vec3 (0., -0.5, t);\n  rSph[3] = vec3 (0., 0.5, t);\n  dstSph = SphHit (ro, rd);\n  if (min (dstSph, dstObj) < dstFar) {\n    if (dstObj < dstSph) {\n      ro += rd * dstObj;\n      vn = ObjNf (ro);\n      if (idObj == 1) {\n        w = smoothstep (0., 0.04, abs (fract (5. * ro / hbLen + 0.5) - 0.5));\n        col = vec3 (mix (vec3 (0.5), vec3 (0.5, 0.6, 0.5),\n           dot (abs (vn) * w.yzx * w.zxy, vec3 (1.))));\n      } else if (idObj == 2) col = vec3 (0.45, 0.55, 0.45);\n    } else {\n      ro += rd * dstSph;\n      vn = qnHit;\n      if (idMol == rideMol) col = vec3 (0.8, 0.8, 0.9);\n      else col = HsvToRgb (vec3 (float (idMol) / float (nMol), 1., 1.));\n    }\n    sh = 0.6 + 0.4 * SphHitSh (ro + 0.01 * ltDir, ltDir, 2. * hbLen);\n    col = col * (0.2 +  0.1 * max (- dot (vn, ltDir), 0.) +\n       0.8 * sh * max (dot (vn, ltDir), 0.)) +\n       0.2 * step (0.95, sh) * sh * pow (max (dot (normalize (ltDir - rd), vn), 0.), 32.);\n    if (! riding && BlkHit (ro, rd) < dstFar) col = mix (col,\n       vec3 (0.7, 0.7, 0.75) * (0.2 + 0.8 * max (dot (vnBlk, ltDir), 0.)) +\n       0.1 * pow (max (0., dot (ltDir, reflect (rd, vnBlk))), 64.),\n       pow (1. - abs (dot (rd, vnBlk)), 4.));\n  }\n  return pow (clamp (col, 0., 1.), vec3 (0.8));\n}\n\nvoid mainImage (out vec4 fragColor, in vec2 fragCoord)\n{\n  mat3 vuMat;\n  vec4 mPtr, stDat;\n  vec3 col, rd, ro;\n  vec2 canvas, uv, ori, ca, sa, mMid, ut, mSize, msw;\n  float az, el, asp, vuId, regId;\n  canvas = iResolution.xy;\n  uv = 2. * fragCoord.xy / canvas - 1.;\n  uv.x *= canvas.x / canvas.y;\n  mPtr = iMouse;\n  mPtr.xy = mPtr.xy / canvas - 0.5;\n  asp = canvas.x / canvas.y;\n  mSize = (1./5.) * vec2 (asp, 1.);\n  mMid = vec2 (asp, 1.) * (1. - mSize.y);\n  ut = abs (uv - mMid) - mSize;\n  regId = -1.;\n  if (mPtr.z > 0.) {\n    regId = 0.;\n    msw = mPtr.xy;\n    if (min (msw.x, msw.y) > 0.5 - mSize.y) {\n      regId = 1.;\n      msw = (msw - 1.) / mSize.y + 1.;\n    }\n  }\n  vuId = 0.;\n  if (max (ut.x, ut.y) < 0.) {\n    uv = (uv - mMid) / mSize.y;\n    vuId = 1.;\n  }\n  if (regId == 1.) vuId = 1. - vuId;\n  riding = (vuId == 0.);\n  stDat = Loadv4 (4 * nMol);\n  hbLen = stDat.y;\n  dstFar = 100.;\n  az = 0.;\n  el = 0.;\n  if (mPtr.z > 0. && regId == vuId) {\n    az += 2. * pi * msw.x;\n    el += 2. * pi * msw.y;\n  }\n  ori = vec2 (el, az);\n  ca = cos (ori);\n  sa = sin (ori);\n  vuMat = mat3 (ca.y, 0., - sa.y, 0., 1., 0., sa.y, 0., ca.y) *\n          mat3 (1., 0., 0., 0., ca.x, - sa.x, 0., sa.x, ca.x);\n  rd = vuMat * normalize (vec3 (uv, (riding ? 1.5 : 4.5)));\n  ltDir = normalize (vec3 (0.7, 2., -1.));\n  rideMol = (nMolE / 2) * (nMolE * (nMolE + 1) + 1);\n  if (riding) {\n    ro = Loadv4 (4 * rideMol).xyz;\n    rd = QtToRMat (Loadv4 (4 * rideMol + 2)) * rd;\n  } else {\n    ro = vuMat * vec3 (0., 0., -6. * hbLen);\n  }\n  if (riding || BlkHitSil (ro, rd) < dstFar) col = ShowScene (ro, rd);\n  else col = vec3 (0.8, 1., 0.8) * (0.3 + 0.2 * uv.y);\n  if (max (ut.x, ut.y) < 0. && min (abs (ut.x), abs (ut.y)) * canvas.y < 2.)\n     col = vec3 (0., 0., 0.4);\n  fragColor = vec4 (col, 1.);\n}\n\nfloat PrBoxDf (vec3 p, vec3 b)\n{\n  vec3 d;\n  d = abs (p) - b;\n  return min (max (d.x, max (d.y, d.z)), 0.) + length (max (d, 0.));\n}\n\nmat3 QtToRMat (vec4 q) \n{\n  mat3 m;\n  float a1, a2, s;\n  s = q.w * q.w - 0.5;\n  m[0][0] = q.x * q.x + s;  m[1][1] = q.y * q.y + s;  m[2][2] = q.z * q.z + s;\n  a1 = q.x * q.y;  a2 = q.z * q.w;  m[0][1] = a1 + a2;  m[1][0] = a1 - a2;\n  a1 = q.x * q.z;  a2 = q.y * q.w;  m[2][0] = a1 + a2;  m[0][2] = a1 - a2;\n  a1 = q.y * q.z;  a2 = q.x * q.w;  m[1][2] = a1 + a2;  m[2][1] = a1 - a2;\n  return 2. * m;\n}\n\nvec3 HsvToRgb (vec3 c)\n{\n  vec3 p;\n  p = abs (fract (c.xxx + vec3 (1., 2./3., 1./3.)) * 6. - 3.);\n  return c.z * mix (vec3 (1.), clamp (p - 1., 0., 1.), c.y);\n}\n\n#define txBuf iChannel0\n#define txSize iChannelResolution[0].xy\nconst float txRow = 128.;\n\nvec4 Loadv4 (int idVar)\n{\n  float fi;\n  fi = float (idVar);\n  return texture (txBuf, (vec2 (mod (fi, txRow), floor (fi / txRow)) + 0.5) /\n     txSize);\n}\n",
+        "name": "Image",
+        "description": "",
+        "type": "image"
+      },
+      {
+        "inputs": [
+          {
+            "id": "4dXGR8",
+            "filepath": "/media/previz/buffer00.png",
+            "previewfilepath": "/media/previz/buffer00.png",
+            "type": "buffer",
+            "channel": 0,
+            "sampler": {
+              "filter": "linear",
+              "wrap": "clamp",
+              "vflip": "true",
+              "srgb": "false",
+              "internal": "byte"
+            },
+            "published": 1
+          }
+        ],
+        "outputs": [
+          {
+            "id": "4dXGR8",
+            "channel": 0
+          }
+        ],
+        "code": "// \"Molecular Waltz\" by dr2 - 2019\n// License: Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License\n\nvec4 QtMul (vec4 q1, vec4 q2);\nmat3 QtToRMat (vec4 q);\nvec4 RMatToQt (mat3 m);\nvec4 EulToQt (vec3 e);\nmat3 LpStepMat (vec3 a);\nfloat Minv3 (vec3 p);\nfloat Hashff (float p);\nvec4 Loadv4 (int idVar);\nvoid Savev4 (int idVar, vec4 val, inout vec4 fCol, vec2 fCoord);\n\n#define S_BIG  1\n#if S_BIG\nconst int nMolE = 6;\n#else\nconst int nMolE = 5;\n#endif\n\nvec3 rSph[4];\nfloat todCur, hbLen, fOvlap, nStep;\nconst int nMol = nMolE * nMolE * nMolE;\nconst int nsMol = 4;\nconst float txRow = 128.;\nconst float pi = 3.14159;\n\nvec3 WallForce (vec3 r)\n{\n  vec3 dr;\n  dr = hbLen - abs (r);\n  return - step (dr, vec3 (1.)) * fOvlap * sign (r) * (1. / abs (dr) - 1.) * dr;\n}\n\nvoid Step (int mId, out vec3 rm, out vec3 vm, out vec4 qm, out vec3 wm)\n{\n  mat3 mRot, mRotN;\n  vec3 rmN, dr, rts, rtsN, rms, fc, am, wam, rMom;\n  float farSite, rSep, dt;\n  dt = 0.01;\n  rm = Loadv4 (4 * mId).xyz;\n  vm = Loadv4 (4 * mId + 1).xyz;\n  qm = Loadv4 (4 * mId + 2);\n  wm = Loadv4 (4 * mId + 3).xyz;\n  mRot = QtToRMat (qm);\n  farSite = 0.5 + sqrt (3./8.);\n  am = vec3 (0.);\n  wam = vec3 (0.);\n  for (int n = 0; n < nMol; n ++) {\n    rmN = Loadv4 (4 * n).xyz;\n    if (n != mId && length (rm - rmN) < 2. * farSite) {\n      mRotN = QtToRMat (Loadv4 (4 * n + 2));\n      for (int j1 = 0; j1 < nsMol; j1 ++) {\n        rts = mRot * rSph[j1];\n        rms = rm + rts;\n        fc = vec3 (0.);\n        for (int j2 = 0; j2 < nsMol; j2 ++) {\n          rtsN = mRotN * rSph[j2];\n          dr = rms - (rmN + rtsN);\n          rSep = length (dr);\n          if (rSep < 1.) fc += fOvlap * (1. / rSep - 1.) * dr;\n        }\n        am += fc;\n        wam += cross (rts, fc);\n      }\n    }\n  }\n  dr = hbLen - abs (rm);\n  if (Minv3 (dr) < farSite + 0.5) {\n    for (int j = 0; j < nsMol; j ++) {\n      rts = mRot * rSph[j];\n      fc = WallForce (rm + rts);\n      am += fc;\n      wam += cross (rts, fc);\n    }\n  }\n  rMom = vec3 (0.);\n  for (int j = 0; j < nsMol; j ++) {\n    rts = rSph[j];\n    rMom += dot (rts, rts) - rts * rts + 1./6.;\n  }\n  rMom /= float (nsMol);\n  wam = mRot * (wam * mRot / rMom);\n  vm += dt * am;\n  rm += dt * vm;\n  wm += dt * wam;\n  qm = normalize (QtMul (RMatToQt (LpStepMat (0.5 * dt * wm)), qm));\n}\n\nvoid Init (int mId, out vec3 rm, out vec3 vm, out vec4 qm, out vec3 wm)\n{\n  float nme, mIdf, b, t;\n  nme = float (nMolE);\n  mIdf = float (mId);\n  rm = 2.2 * (floor (vec3 (mod (mIdf, nme), mod (mIdf, nme * nme) / nme,\n      mIdf / (nme * nme))) - 0.5 * (nme - 1.));\n  t = todCur + mIdf;\n  b = 2. * Hashff (t) - 1.;\n  qm = EulToQt (vec3 (0.1 * b, 0., 0.));\n  vm = 1.5 * (2. * vec3 (Hashff (t + 11.), Hashff (t + 21.), Hashff (t + 31.)) - 1.);\n  wm = vec3 (0.2, 0.2, 3.) * b;\n}\n\nvoid mainImage (out vec4 fragColor, in vec2 fragCoord)\n{\n  vec4 stDat, qm;\n  vec3 rm, vm, wm;\n  vec2 iFrag;\n  float tCur, mxStep, t;\n  int mId, pxId, kp;\n  bool doInit;\n  iFrag = floor (fragCoord);\n  pxId = int (iFrag.x + txRow * iFrag.y);\n  if (iFrag.x >= txRow || pxId >= 4 * nMol + 1) discard;\n  tCur = iTime;\n  todCur = iDate.w;\n  t = -1. / (2. * sqrt (2.));\n  rSph[0] = vec3 (-0.5, 0., - t);\n  rSph[1] = vec3 (0.5, 0., - t);\n  rSph[2] = vec3 (0., -0.5, t);\n  rSph[3] = vec3 (0., 0.5, t);\n  fOvlap = 1000.;\n  mId = (pxId < 4 * nMol) ? mId = pxId / 4 : -1;\n  doInit = false;\n  mxStep = 30000.;\n  if (iFrame == 0) {\n    doInit = true;\n    hbLen = 1.5 * float (nMolE);\n  } else {\n    stDat = Loadv4 (4 * nMol);\n    nStep = stDat.x;\n    hbLen = stDat.y;\n    ++ nStep;\n    if (nStep > mxStep) doInit = true;\n  }\n  if (doInit) {\n    nStep = 0.;\n  }\n  if (mId >= 0) {\n    if (doInit) Init (mId, rm, vm, qm, wm);\n    else Step (mId, rm, vm, qm, wm);\n    kp = 4 * mId;\n    if      (pxId == kp + 0) stDat = vec4 (rm, 0.);\n    else if (pxId == kp + 1) stDat = vec4 (vm, 0.);\n    else if (pxId == kp + 2) stDat = qm;\n    else if (pxId == kp + 3) stDat = vec4 (wm, 0.);\n  } else stDat = vec4 (nStep, hbLen, 0., 0.);\n  Savev4 (pxId, stDat, fragColor, fragCoord);\n}\n\nvec4 QtMul (vec4 q1, vec4 q2)\n{\n  return vec4 (\n       q1.w * q2.x - q1.z * q2.y + q1.y * q2.z + q1.x * q2.w,\n       q1.z * q2.x + q1.w * q2.y - q1.x * q2.z + q1.y * q2.w,\n     - q1.y * q2.x + q1.x * q2.y + q1.w * q2.z + q1.z * q2.w,\n     - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z + q1.w * q2.w);\n}\n\nmat3 QtToRMat (vec4 q) \n{\n  mat3 m;\n  float a1, a2, s;\n  q = normalize (q);\n  s = q.w * q.w - 0.5;\n  m[0][0] = q.x * q.x + s;  m[1][1] = q.y * q.y + s;  m[2][2] = q.z * q.z + s;\n  a1 = q.x * q.y;  a2 = q.z * q.w;  m[0][1] = a1 + a2;  m[1][0] = a1 - a2;\n  a1 = q.x * q.z;  a2 = q.y * q.w;  m[2][0] = a1 + a2;  m[0][2] = a1 - a2;\n  a1 = q.y * q.z;  a2 = q.x * q.w;  m[1][2] = a1 + a2;  m[2][1] = a1 - a2;\n  return 2. * m;\n}\n\nvec4 RMatToQt (mat3 m)\n{\n  vec4 q;\n  const float tol = 1e-6;\n  q.w = 0.5 * sqrt (max (1. + m[0][0] + m[1][1] + m[2][2], 0.));\n  if (abs (q.w) > tol) q.xyz =\n     vec3 (m[1][2] - m[2][1], m[2][0] - m[0][2], m[0][1] - m[1][0]) / (4. * q.w);\n  else {\n    q.x = sqrt (max (0.5 * (1. + m[0][0]), 0.));\n    if (abs (q.x) > tol) q.yz = vec2 (m[0][1], m[0][2]) / q.x;\n    else {\n      q.y = sqrt (max (0.5 * (1. + m[1][1]), 0.));\n      if (abs (q.y) > tol) q.z = m[1][2] / q.y;\n      else q.z = 1.;\n    }\n  }\n  return normalize (q);\n}\n\nvec4 EulToQt (vec3 e)\n{\n  float a1, a2, a3, c1, s1;\n  a1 = 0.5 * e.y;  a2 = 0.5 * (e.x - e.z);  a3 = 0.5 * (e.x + e.z);\n  s1 = sin (a1);  c1 = cos (a1);\n  return normalize (vec4 (s1 * cos (a2), s1 * sin (a2), c1 * sin (a3),\n     c1 * cos (a3)));\n}\n\nmat3 LpStepMat (vec3 a)\n{\n  mat3 m1, m2;\n  vec3 t, c, s;\n  float b1, b2;\n  t = 0.25 * a * a;\n  c = (1. - t) / (1. + t);\n  s = a / (1. + t);\n  m1[0][0] = c.y * c.z;  m2[0][0] = c.y * c.z;\n  b1 = s.x * s.y * c.z;  b2 = c.x * s.z;\n  m1[0][1] = b1 + b2;  m2[1][0] = b1 - b2;\n  b1 = c.x * s.y * c.z;  b2 = s.x * s.z;\n  m1[0][2] = - b1 + b2;  m2[2][0] = b1 + b2;\n  b1 = c.y * s.z;\n  m1[1][0] = - b1;  m2[0][1] = b1;  \n  b1 = s.x * s.y * s.z;  b2 = c.x * c.z;\n  m1[1][1] = - b1 + b2;  m2[1][1] = b1 + b2; \n  b1 = c.x * s.y * s.z;  b2 = s.x * c.z;\n  m1[1][2] = b1 + b2;  m2[2][1] = b1 - b2;\n  m1[2][0] = s.y;  m2[0][2] = - s.y;\n  b1 = s.x * c.y;\n  m1[2][1] = - b1;  m2[1][2] = b1;\n  b1 = c.x * c.y;\n  m1[2][2] = b1;  m2[2][2] = b1;\n  return m1 * m2;\n}\n\nfloat Minv3 (vec3 p)\n{\n  return min (p.x, min (p.y, p.z));\n}\n\nfloat Hashff (float p)\n{\n  const float cHashM = 43758.54;\n  return fract (sin (p) * cHashM);\n}\n\n#define txBuf iChannel0\n#define txSize iChannelResolution[0].xy\n\nvec4 Loadv4 (int idVar)\n{\n  float fi;\n  fi = float (idVar);\n  return texture (txBuf, (vec2 (mod (fi, txRow), floor (fi / txRow)) + 0.5) /\n     txSize);\n}\n\nvoid Savev4 (int idVar, vec4 val, inout vec4 fCol, vec2 fCoord)\n{\n  vec2 d;\n  float fi;\n  fi = float (idVar);\n  d = abs (fCoord - vec2 (mod (fi, txRow), floor (fi / txRow)) - 0.5);\n  if (max (d.x, d.y) < 0.5) fCol = val;\n}\n",
+        "name": "Buffer A",
+        "description": "",
+        "type": "buffer"
+      }
+    ]
+  },
+  {
+    "ver": "0.1",
+    "info": {
+      "id": "tlB3WG",
+      "date": "1560951455",
+      "viewed": 28,
+      "name": "Moon Flyby",
+      "username": "SSHantaram",
+      "description": "Raymarched plane with procedural noise perturbations.",
+      "likes": 0,
+      "published": 1,
+      "flags": 0,
+      "tags": [
+        "raymarching",
+        "bump"
+      ],
+      "hasliked": 0
+    },
+    "renderpass": [
+      {
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "4dfGRr",
+            "channel": 0
+          }
+        ],
+        "code": "const int MAX_MARCHING_STEPS = 255;\nconst float MIN_DIST = 0.0;\nconst float MAX_DIST = 100.0;\nconst float EPSILON = 0.0001;\nconst float BUMP_FACTOR = 0.5;\n\n\n// 3D hash function\nfloat hash(vec3 p)\n{\n    p  = fract( p*0.3183099+.1 );\n\tp *= 17.0;\n    return fract( p.x*p.y*p.z*(p.x+p.y+p.z) );\n}\n\n// 3D precedural noise\nfloat noise( in vec3 x )\n{\n    vec3 p = floor(x);\n    vec3 f = fract(x);\n    f = f*f*(3.0-2.0*f);\n\t\n    // interpolate between hashes of adjacent grid points\n    return mix(mix(mix( hash(p+vec3(0,0,0)), \n                        hash(p+vec3(1,0,0)),f.x),\n                   mix( hash(p+vec3(0,1,0)), \n                        hash(p+vec3(1,1,0)),f.x),f.y),\n               mix(mix( hash(p+vec3(0,0,1)), \n                        hash(p+vec3(1,0,1)),f.x),\n                   mix( hash(p+vec3(0,1,1)), \n                        hash(p+vec3(1,1,1)),f.x),f.y),f.z);\n}\n\n// 3D noise layered in several octaves\nfloat layeredNoise(in vec3 x) {\n    return 0.7*noise(x) + 0.2*noise(x*4.0) + 0.07*noise(x*8.0) + 0.02*noise(x*16.0) + 0.01*noise(x*32.0);\n}\n\n// singed distance function of the y=0 plane\nfloat planeSDF(vec3 p) {\n    return p.y;\n}\n\n// singed distanc function of plane with noise bump map\nfloat bumpPlaneSDF(vec3 p) {\n    // get distance to plane as usual\n    float d = planeSDF(p);\n    \n    vec3 normal;\n    float bump = 0.0;\n    \n  \t// only consider bumps if close to plane\n    if(d < BUMP_FACTOR*1.5)\n\t{\t\n\t\tnormal = vec3(0.0, 1.0, 0.0);\n\t\tbump = layeredNoise(p)*BUMP_FACTOR;\n\t}\n    return d - bump;\n}\n\n// singed distance function to enire scene\nfloat sceneSDF(vec3 samplePoint) {\n    return bumpPlaneSDF(samplePoint);\n}\n\n// returns the distanse to the scene along this ray\n// by raymarching using the sceneSDF\nfloat shortestDistanceToSurface(vec3 eye, vec3 marchingDirection, float start, float end) {\n    float depth = start;\n    //raymarching loop\n    for (int i = 0; i < MAX_MARCHING_STEPS; i++) {\n        // get distance to scene\n        float dist = sceneSDF(eye + depth * marchingDirection);\n        // exit if close enough\n        if (dist < EPSILON) {\n\t\t\treturn depth;\n        }\n        // step closer\n        depth += dist;\n        // exit if too far\n        if (depth >= end) {\n            return end;\n        }\n    }\n    return end;\n}\n\nvec3 rayDirection(float fieldOfView, vec2 size, vec2 fragCoord) {\n    vec2 xy = fragCoord - size / 2.0;\n    float z = size.y / tan(radians(fieldOfView) / 2.0);\n    return normalize(vec3(xy, -z));\n}\n\n// estimate normal by aproximatind the first deriviative of the sceneSDF\nvec3 estimateNormal(vec3 p) {\n    return normalize(vec3(\n        sceneSDF(vec3(p.x + EPSILON, p.y, p.z)) - sceneSDF(vec3(p.x - EPSILON, p.y, p.z)),\n        sceneSDF(vec3(p.x, p.y + EPSILON, p.z)) - sceneSDF(vec3(p.x, p.y - EPSILON, p.z)),\n        sceneSDF(vec3(p.x, p.y, p.z  + EPSILON)) - sceneSDF(vec3(p.x, p.y, p.z - EPSILON))\n    ));\n}\n\n// generate camera transform\nmat3 viewMatrix(vec3 eye, vec3 center, vec3 up) {\n    // Based on gluLookAt man page\n    vec3 f = normalize(center - eye);\n    vec3 s = normalize(cross(f, up));\n    vec3 u = cross(s, f);\n    return mat3(s, u, -f);\n}\n\n// lambert shading coefficient with raymarched shadows\nfloat lambertShading(vec3 p, vec3 lightDir) {\n    vec3 n = estimateNormal(p);\n    \n    // lambert shading coefficient\n    float brightness = max(0.0, dot(-lightDir, n));\n    \n    // trace ray from surface point in direction of the light source\n    // offset in direction of the normal to avoid self intersection\n    float distToLight = shortestDistanceToSurface(p + n * EPSILON * 100.0, -lightDir, MIN_DIST, MAX_DIST);\n    \n    // in shadow\n    if (distToLight + 10.0 * EPSILON < MAX_DIST) {\n        return 0.0;\n    }\n    \n    return brightness;\n}\n\n\n\nvoid mainImage( out vec4 fragColor, in vec2 fragCoord )\n{\n\tvec3 viewDir = rayDirection(45.0, iResolution.xy, fragCoord);\n   \tvec3 eye = vec3(2.0*sin(iTime*0.3 - 3.0), 3.0, iTime);\n    mat3 viewToWorld = viewMatrix(eye, eye + vec3(2.0*sin(iTime*0.3), -3.0, 8.0), vec3(0.2*sin((iTime-1.0)*0.3), 1.0, 0.0));\n    \n    vec3 worldDir = viewToWorld * viewDir;\n    \n    float dist = shortestDistanceToSurface(eye, worldDir, MIN_DIST, MAX_DIST);\n    \n    if (dist > MAX_DIST - EPSILON) {\n        // Didn't hit anything\n        fragColor = vec4(0.0, 0.0, 0.0, 0.0);\n\t\treturn;\n    }\n    \n    // The closest point on the surface to the eyepoint along the view ray\n    vec3 p = eye + dist * worldDir;\n    \n    vec3 lightDir = normalize(vec3(-1.0, -1.0, -3.0));\n    \n    vec3 ambientLight = vec3(0.01, 0.01, 0.005);\n    vec3 diffuseColor = vec3(0.8, 0.8, 0.8);\n    \n    vec3 color = ambientLight;\n    \n    color += diffuseColor*lambertShading(p, lightDir);\n    \n    fragColor = vec4(color, 1.0);\n}",
+        "name": "Image",
+        "description": "",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "ver": "0.1",
+    "info": {
+      "id": "ttlGWj",
+      "date": "1560935170",
+      "viewed": 27,
+      "name": "Voxel tiles",
+      "username": "tyomalu",
+      "description": "attempt to render voxel tiles",
+      "likes": 3,
+      "published": 1,
+      "flags": 0,
+      "tags": [
+        "voxel"
+      ],
+      "hasliked": 0
+    },
+    "renderpass": [
+      {
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "4dfGRr",
+            "channel": 0
+          }
+        ],
+        "code": "const float PI = 3.14159265359;\nconst float DEG_TO_RAD = PI / 180.0;\n\nconst int tileWidth = 5;\nconst int tileHeight = 5;\nconst int tileDepth = 5;\n    \nint tile[] = int[](\n    0,0,0,0,0,\n    0,0,0,0,0,\n    0,0,1,0,0,\n    0,0,0,0,0,    \n    0,0,0,0,0,        \n    \n    0,0,0,0,0,\n    0,0,0,0,0,\n    0,0,1,0,0,\n    0,0,0,0,0,    \n    0,0,0,0,0,        \n\n    0,0,0,0,0,\n    0,0,1,0,0,\n    0,1,1,1,0,\n    0,0,1,0,0,    \n    0,0,0,0,0,        \n\n    0,0,0,0,0,\n    0,1,1,1,0,\n    0,1,1,1,0,\n    0,1,1,1,0,    \n    0,0,0,0,0,        \n\n    0,0,1,0,0,\n    0,1,1,1,0,\n    1,1,1,1,1,\n    0,1,1,1,0,    \n    0,0,1,0,0\n);\n\nstruct Ray {\n    vec3 origin;\n    vec3 direction;\n};\n\nstruct Plane {\n    vec3 position;\n    vec3 normal;\n};    \n \nstruct Intersection{\n\tfloat t;\n\tfloat hit;\n\tvec3  hitPoint;\n\tvec3  normal;\n};\n    \nint voxelAt(ivec3 pos) {\n    return tile[(pos.z % tileDepth) * tileHeight * tileWidth + (pos.y % tileHeight) * tileWidth + (pos.x % tileWidth)];\n}\n\nIntersection intersectPlane(Ray ray, Plane p){\n    Intersection i;\n    i.t = 1.0e+30;\n\ti.hit = 0.0;\n\ti.hitPoint = vec3(0.0);\n    i.normal = vec3(0.0); \n    \n\tfloat d = -dot(p.position, p.normal);\n\tfloat v = dot(ray.direction, p.normal);\n\tfloat t = -(dot(ray.origin, p.normal) + d) / v;\n\tif(t > 0.0 && t < i.t){\n\t\ti.t = t;\n\t\ti.hit = 1.0;\n\t\ti.hitPoint = vec3(\n\t\t\tray.origin.x + t * ray.direction.x,\n\t\t\tray.origin.y + t * ray.direction.y,\n\t\t\tray.origin.z + t * ray.direction.z\n\t\t);\n\t\ti.normal = p.normal;\n\t}\n    return i;\n}\n\nmat3 rot3xy( vec2 angle ) {\n\tvec2 c = cos( angle );\n\tvec2 s = sin( angle );\n\t\n\treturn mat3(\n\t\tc.y      ,  0.0, -s.y,\n\t\ts.y * s.x,  c.x,  c.y * s.x,\n\t\ts.y * c.x, -s.x,  c.y * c.x\n\t);\n}\n\nvoid mainImage( out vec4 fragColor, in vec2 fragCoord )\n{\n    // Normalized pixel coordinates (from 0 to 1)\n    vec2 uv    = fragCoord.xy / iResolution.xy - vec2(0.5);\n         uv.x *= iResolution.x / iResolution.y;\n    \n    Ray ray = Ray(vec3(-1.5, 16.5 + sin(iTime) * 10.0, 12.0), rot3xy(vec2(-DEG_TO_RAD * 34.0, sin(iTime*2.0)/10.0)) * normalize(vec3(uv.x, uv.y, -1.0)));\n    \n    Plane tileTopPlane = Plane(\n    \tvec3(0.0, tileDepth, 0.0), \n    \tvec3(0.0, 1.0, 0.0)\n    );\n\n    \n    Intersection iTop = intersectPlane(ray, tileTopPlane);\n    \n    Plane dp = tileTopPlane;\n\n    fragColor = vec4(vec3(0.4, 0.0, 0.0), 1.0);\n    \n    for (int z=0; z < tileDepth; z++, dp.position.y -= 1.0) {\n        Intersection it = intersectPlane(ray, dp);\n        \n        if(it.hit > 0.0) {\n            ivec2 tileCoord = ivec2(\n                ceil(it.hitPoint.x / float(tileWidth)), \n                ceil(it.hitPoint.z / float(tileHeight))\n            );\n            \n            ivec2 voxelCoord = ivec2(\n                ceil(float(tileWidth) - (float(tileCoord.x * tileWidth) - it.hitPoint.x + 1.0)),\n                ceil(float(tileHeight) - (float(tileCoord.y * tileHeight) - it.hitPoint.z + 1.0))\n            );\n\n            //if (tileCoord.x >= -2 && tileCoord.y >= -4 && tileCoord.x <= 2 && tileCoord.y <= 1) {\n                if (voxelAt(ivec3(voxelCoord, z)) == 1) {\n\t             \tfragColor = vec4(vec3(float(z) / float(tileDepth)), 1.0);\n                    break;\n                }\n                //else\n                //\tfragColor += vec4(vec3(0.1), 1.0);\n            //}\n            \n        } \n    }\n\n}",
+        "name": "Image",
+        "description": "",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "ver": "0.1",
+    "info": {
+      "id": "wlB3Wy",
+      "date": "1560943728",
+      "viewed": 33,
+      "name": "study3_3dSample_clock",
+      "username": "firegump",
+      "description": "just leaning  Clock~~~~",
+      "likes": 1,
+      "published": 1,
+      "flags": 0,
+      "tags": [
+        "studycubedraw"
+      ],
+      "hasliked": 0
+    },
+    "renderpass": [
+      {
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "4dfGRr",
+            "channel": 0
+          }
+        ],
+        "code": "#define sat(x) clamp(x,0.,1.)\nfloat DistLine(vec3 ro, vec3 rd, vec3 p){\n\treturn length(cross((p - ro),rd))/length(rd);\n}\nfloat DrawPoint(vec3 ro, vec3 rd, vec3 p){\n\tfloat d = DistLine(ro,rd,p);\n    d = smoothstep(.012,.01, d);\n    return d;\n}\nvoid mainImage( out vec4 fragColor, in vec2 fragCoord )\n{\n     float t = iTime*.5;\n    // Normalized pixel coordinates (from 0 to 1)\n    vec2 uv = fragCoord/iResolution.xy;\n    uv -= .5;\n    uv.x *= iResolution.x/iResolution.y;\n    \n    vec3 ro = vec3(2.+sin(t)*.5,sin(-t)*.5,cos(t)*.9);//camera point\n    \n    \n\n    float zoom = 1.;\n    const float a = 1.;\n\tfloat b = 0.;\n    float A = sin(t*7.);\n    float B = cos(t*7.);\n    float C = sin(t*1.)*.7;\n    float D = cos(t*1.)*.7;\n    \n    vec3 lookat = vec3(a*.5);//rect center point\n        \n    vec3 f = normalize(lookat - ro);\n    vec3 r = cross(vec3(0.,1.,0.),f);\n    vec3 u = cross(r,f);\n    \n    vec3 c = ro + f*zoom;\n    \n    vec3 i =  c + uv.x*r + uv.y*u; //c = ro + f*2.0\n    vec3 rd = i -  ro;//ray direction\n    \n   \n    \n    float d = 0.;\n    \n   \n\n    for(float i = 0.;i < a*10.+.01;i += 0.1){\n    \t\n        d += DrawPoint(ro, rd, vec3(a,a,i));\n        d += DrawPoint(ro, rd, vec3(a,a,i*.1));\n        d += DrawPoint(ro, rd, vec3(b,b,i*.1));\n        d += DrawPoint(ro, rd, vec3(a,b,i*.1));\n        d += DrawPoint(ro, rd, vec3(b,a,i*.1));\n        d += DrawPoint(ro, rd, vec3(i*.1,a,a));\n        d += DrawPoint(ro, rd, vec3(i*.1,b,b));\n        d += DrawPoint(ro, rd, vec3(i*.1,b,a));\n        d += DrawPoint(ro, rd, vec3(i*.1,a,b));\n        d += DrawPoint(ro, rd, vec3(a,i*.1,a))*.1;\n        d += DrawPoint(ro, rd, vec3(a,i*.1,b))*.1;\n        d += DrawPoint(ro, rd, vec3(b,i*.1,a))*.1;\n        d += DrawPoint(ro, rd, vec3(b,i*.1,b))*.1;\n        //d += DrawPoint(ro, rd, vec3(i*abs(sin(t*42.))*.014,a*.5,a*.5));\n        d += DrawPoint(ro, rd, vec3(b+a ,i*B*.05+a*.5, A*i*.05 +a*.5));//quick pointer\n        d += DrawPoint(ro, rd, vec3(b+a,i*D*.05+a*.5, C*i*.05 +a*.5));//slow pointer\n        \n        d += (DrawPoint(ro, rd, vec3(b+a ,i*cos(i*7.)*.05+a*.5, sin(i*7.)*i*.05 +a*.5)))*(sin(i*.5)*.5+0.6);\n        \n        \n    }\n    vec4 col = vec4 ((0.5 + 0.5*cos(t + uv.xyx + vec3(0,2,4))),1.);\n    col *= d;\n    \n    // Output to screen\n    fragColor = col;\n}",
+        "name": "Image",
+        "description": "",
+        "type": "image"
+      }
+    ]
+  },
+  {
+    "ver": "0.1",
+    "info": {
+      "id": "wtS3Dy",
+      "date": "1560926293",
+      "viewed": 44,
+      "name": "Birefringence Gradient",
+      "username": "blackle",
+      "description": "This is a small function that emulates the Michel-L\u00e9vy interference gradient, as one would see in many birefringent effects, such as viewing stressed plastic through cross polarizers. It was used in my demo \"scaleMARK\"",
+      "likes": 4,
+      "published": 1,
+      "flags": 0,
+      "tags": [
+        "birefringence"
+      ],
+      "hasliked": 0
+    },
+    "renderpass": [
+      {
+        "inputs": [
+          {
+            "id": "4sf3Rr",
+            "filepath": "/media/a/ad56fba948dfba9ae698198c109e71f118a54d209c0ea50d77ea546abad89c57.png",
+            "previewfilepath": "/media/ap/ad56fba948dfba9ae698198c109e71f118a54d209c0ea50d77ea546abad89c57.png",
+            "type": "texture",
+            "channel": 0,
+            "sampler": {
+              "filter": "mipmap",
+              "wrap": "repeat",
+              "vflip": "true",
+              "srgb": "false",
+              "internal": "byte"
+            },
+            "published": 1
+          }
+        ],
+        "outputs": [
+          {
+            "id": "4dfGRr",
+            "channel": 0
+          }
+        ],
+        "code": "// Michel-L\u00e9vy interference in linear sRGB, given path difference F expressed in micrometers.\n// Note that for some F this function will return colours with some channels in the negative.\n// This is because some interference colours are outside the linear sRGB gamut, and therefore\n// must be represented with negative values for some channels.\nvec3 ML(float F) {\n    return mat3(1.5,-.2,-.1,-.6,1.1,.2,-.1,.1,1.5)*(.5-.5*cos(2.*F*vec3(5.2,5.7,7.2)));\n}\n\nvoid mainImage( out vec4 fragColor, in vec2 fragCoord )\n{\n    // Normalized pixel coordinates (from 0 to 1)\n    vec2 uv = (fragCoord-iResolution.xy/2.0)/iResolution.yy;\n\n    vec3 col = ML(pow(texture(iChannel0, uv*0.5).x*(0.5+sin(iTime)*0.5),cos(iTime)+2.0)*1.6);\n\n    col *= pow(max(1.0 - pow(length(uv)*1.1, 4.0), 0.0),3.0); //vingetting lol\n    if (uv.y > 0.4) col = ML((fragCoord.x/iResolution.x)*1.5);\n    fragColor.xyz = sqrt(log(max(col+0.002,0.0)*1.3+1.0));\n}\n",
+        "name": "Image",
+        "description": "",
+        "type": "image"
+      }
+    ]
+  }
+]
