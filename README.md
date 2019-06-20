@@ -9,11 +9,5 @@ If time permits, it will get more interesting...
 
 Download shaders and store to db.
 ```bash
-./manage.py shadertox_download_shadertoy
-```
-
-Update shader models from json values, in case you've added some fields
-to `shaders.models.ShadertoyShader`. 
-```bash
-./manage.py shadertox_update_shadertoy_model
+./manage.py shadertox_download_shadertoy --help
 ```

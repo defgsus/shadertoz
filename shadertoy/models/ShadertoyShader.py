@@ -123,8 +123,10 @@ class ShadertoyShader(models.Model):
                 fields_data = cls.get_model_fields_from_json(shader_data)
                 fields_data["date_visited"] = now
 
-                try:
-                    shader = cls.objects.get(shader_id=fields_data["shader_id"])
+                qset = cls.objects.filter(shader_id=fields_data["shader_id"])
+
+                if qset.exists():
+                    shader = qset.order_by("-date_visited")[0]
 
                     if shader_data != shader.shader_json:
                         cls.objects.create(**fields_data)
@@ -132,10 +134,9 @@ class ShadertoyShader(models.Model):
                     else:
                         report["skipped"] += 1
 
-                except cls.DoesNotExist:
+                else:
 
                     cls.objects.create(**fields_data)
                     report["new"] += 1
 
-        print(report)
         return report

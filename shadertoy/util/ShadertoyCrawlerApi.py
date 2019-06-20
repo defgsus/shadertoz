@@ -104,4 +104,4 @@ class ShadertoyCrawlerApi:
 
     def _log_response(self, response):
         if self.verbose:
-            print(response.request.url, response.request.body, "responded with", response.status_code)
+            print(response.request.url, response.request.body or "", "responded with", response.status_code)
