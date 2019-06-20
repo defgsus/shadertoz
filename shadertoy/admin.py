@@ -41,7 +41,7 @@ class ShadertoyCommentAdmin(admin.ModelAdmin):
 
     list_display = (
         "comment_id",
-        "shader_id",
+        "shader_url_decorator",
         "date_decorator",
         "username",
         #"userpicture",
@@ -56,6 +56,12 @@ class ShadertoyCommentAdmin(admin.ModelAdmin):
     search_fields = (
         "username", "text",
     )
+
+    def shader_url_decorator(self, comment):
+        return mark_safe('<a href="%s" target="_blank">%s</a>' % (
+            comment.shader_url(), comment.shader_id
+        ))
+    shader_url_decorator.short_description = "ID"
 
     def date_decorator(self, shader):
         return mark_safe(shader.date_published)

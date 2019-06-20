@@ -56,8 +56,8 @@ class ShadertoyCrawler:
         shaders = sum(shaders, [])
 
         arguments = [
-            (self.crawler, shader_id)
-            for shader_id in shader_ids
+            (self.crawler, shader["info"]["id"])
+            for shader in shaders
         ]
         shader_comments = self.pool.starmap(self._get_shader_comment, arguments)
 

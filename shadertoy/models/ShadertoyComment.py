@@ -44,6 +44,9 @@ class ShadertoyComment(models.Model):
         verbose_name=_("Hidden"),
     )
 
+    def shader_url(self):
+        return "https://www.shadertoy.com/view/%s" % self.shader_id
+
     @classmethod
     def get_model_fields_from_json(cls, data):
         date = datetime.datetime.fromtimestamp(int(data["date"]))
